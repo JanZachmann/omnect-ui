@@ -48,6 +48,10 @@
       <div class="key">factory-reset-result:</div>
       <div id="factory-reset-result">N/A</div>
     </div>
+    <div class="key-value-wrapper">
+      <div class="key">network-status:</div>
+      <div id="network-status">N/A</div>
+    </div>
 
     <h3>Commands</h3>
     <div class="commands">
@@ -64,6 +68,7 @@
     var subFactoryResetResult;
     var subVersion;
     var subTimeout;
+    var subNetworkStatus;
     var xhr = new XMLHttpRequest();
 
     document
@@ -84,6 +89,7 @@
     );
     const azureSdkVersion = document.getElementById("azure-sdk-version");
     const factoryResetResult = document.getElementById("factory-reset-result");
+    const networkStatus = document.getElementById("network-status");
 
     function bytesToBase64(bytes) {
       const binString = Array.from(bytes, (byte) =>
@@ -100,7 +106,7 @@
           new TextEncoder().encode(user + ":" + password)
         );
 
-        xhr.open("Post", "token/login", true);
+        xhr.open("POST", "token/login", true);
         xhr.setRequestHeader("Authorization", "Basic " + creds);
         xhr.onload = function () {
           var status = xhr.status;
@@ -167,10 +173,18 @@
         }
       });
 
+      centrifuge.history("NetworkStatus", { limit: 1 }).then(function (resp) {
+        console.log(resp);
+        if (0 < resp.publications.length) {
+          setNetworkStatus(resp.publications[0].data);
+        }
+      });
+
       subOnlineStatus = centrifuge.newSubscription("OnlineStatus");
       subFactoryResetResult = centrifuge.newSubscription("FactoryResetResult");
       subVersion = centrifuge.newSubscription("Versions");
       subTimeout = centrifuge.newSubscription("Timeouts");
+      subNetworkStatus = centrifuge.newSubscription("NetworkStatus");
 
       subOnlineStatus
         .on("publication", function (ctx) {
@@ -191,6 +205,12 @@
         .subscribe();
 
       subTimeout
+        .on("publication", function (ctx) {
+          setTimeout(ctx.data);
+        })
+        .subscribe();
+
+      subNetworkStatus
         .on("publication", function (ctx) {
           setTimeout(ctx.data);
         })
@@ -248,6 +268,13 @@
       if (typeof data["factory-reset-status"] !== "undefined") {
         factoryResetResult.innerHTML =
           data["factory-reset-status"];
+      }
+    }
+
+    function setNetworkStatus(data) {
+      if (typeof data["network-status"] !== "undefined") {
+        networkStatus.innerHTML =
+        JSON.stringify(data["network-status"]);
       }
     }
 

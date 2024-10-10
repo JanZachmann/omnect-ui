@@ -11,7 +11,7 @@ use hyper::{
 use hyper_util::rt::TokioIo;
 use jwt_simple::prelude::*;
 use log::{debug, error, info};
-use std::io::Write;
+use std::{io::Write, process::ExitCode};
 use tokio::{net::UnixStream, process::Command};
 
 const TOKEN_EXPIRE_HOURES: u64 = 2;
@@ -222,24 +222,13 @@ async fn post(path: &str, auth: Option<BearerAuth>) -> Result<HttpResponse> {
         }
     }
 
-    let stream = UnixStream::connect(std::env::var("SOCKET_PATH").expect("SOCKET_PATH missing"))
-        .await
-        .context("cannot create unix stream")?;
-
-    let (mut sender, conn) = http1::handshake(TokioIo::new(stream))
-        .await
-        .context("unix stream handshake failed")?;
-
-    actix_rt::spawn(async move {
-        if let Err(err) = conn.await {
-            error!("post connection failed: {:?}", err);
+    let mut sender = match sender().await {
+        Err(e) => {
+            error!("error creating request sender: {e}. socket might be broken. exit application");
+            std::process::exit(1)
         }
-    });
-
-    sender
-        .ready()
-        .await
-        .context("unix stream unexpectedly closed")?;
+        Ok(sender) => sender,
+    };
 
     let request = Request::builder()
         .uri(path)
@@ -264,6 +253,29 @@ async fn post(path: &str, auth: Option<BearerAuth>) -> Result<HttpResponse> {
     let body = String::from_utf8(body.to_bytes().to_vec()).context("get response body failed")?;
 
     Ok(HttpResponse::build(status_code).body(body))
+}
+
+async fn sender() -> Result<http1::SendRequest<Empty<Bytes>>> {
+    let stream = UnixStream::connect(std::env::var("SOCKET_PATH").expect("SOCKET_PATH missing"))
+        .await
+        .context("cannot create unix stream")?;
+
+    let (mut sender, conn) = http1::handshake(TokioIo::new(stream))
+        .await
+        .context("unix stream handshake failed")?;
+
+    actix_rt::spawn(async move {
+        if let Err(err) = conn.await {
+            error!("post connection failed: {:?}", err);
+        }
+    });
+
+    sender
+        .ready()
+        .await
+        .context("unix stream unexpectedly closed")?;
+
+    Ok(sender)
 }
 
 fn token() -> HttpResponse {
