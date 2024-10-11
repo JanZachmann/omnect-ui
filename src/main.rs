@@ -11,7 +11,7 @@ use hyper::{
 use hyper_util::rt::TokioIo;
 use jwt_simple::prelude::*;
 use log::{debug, error, info};
-use std::{io::Write, process::ExitCode};
+use std::io::Write;
 use tokio::{net::UnixStream, process::Command};
 
 const TOKEN_EXPIRE_HOURES: u64 = 2;
