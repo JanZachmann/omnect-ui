@@ -12,53 +12,56 @@
       <h2 class="primary">omnect <span class="secondary">ui</span></h2>
     </div>
 
-    <h3>Login</h3>
-    <div class="login-wrapper">
-      <input class="input-style" type="text" name="user" id="user" />
-      <input class="input-style" type="password" name="pass" id="password" />
-      <button class="btn" id="login">login</button>
-    </div>
+    <button id="logout" class="btn" type="button">logout</button>
+    <form class="login-wrapper" id="login" method="post">
+      <h3>Login</h3>
+      <input class="input-style" type="text" name="user" id="user" required />
+      <input class="input-style" type="password" name="pass" id="password" required />
+      <button class="btn" type="submit">login</button>
+    </form>
 
-    <h3>Stats</h3>
-    <div class="key-value-wrapper">
-      <div class="key">online:</div>
-      <div id="online">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">os-version:</div>
-      <div id="osversion">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">os-name:</div>
-      <div id="osname">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">wait online timeout secs:</div>
-      <div id="wait-online-timeout">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">omnect-device-service-version:</div>
-      <div id="omnect-device-service-version">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">azure-sdk-version:</div>
-      <div id="azure-sdk-version">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">factory-reset-result:</div>
-      <div id="factory-reset-result">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">network-status:</div>
-      <div id="network-status">N/A</div>
-    </div>
+    <section>
+      <h3>Stats</h3>
+      <div class="key-value-wrapper">
+        <div class="key">online:</div>
+        <div id="online">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">os-version:</div>
+        <div id="osversion">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">os-name:</div>
+        <div id="osname">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">wait online timeout secs:</div>
+        <div id="wait-online-timeout">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">omnect-device-service-version:</div>
+        <div id="omnect-device-service-version">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">azure-sdk-version:</div>
+        <div id="azure-sdk-version">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">factory-reset-result:</div>
+        <div id="factory-reset-result">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">network-status:</div>
+        <div id="network-status">N/A</div>
+      </div>
 
-    <h3>Commands</h3>
-    <div class="commands">
-      <button class="btn" id="factory-reset">factory reset</button>
-      <button class="btn" id="reboot">reboot</button>
-      <button class="btn" id="reload-network">reload network</button>
-    </div>
+      <h3>Commands</h3>
+      <div class="commands">
+        <button class="btn" id="factory-reset">factory reset</button>
+        <button class="btn" id="reboot">reboot</button>
+        <button class="btn" id="reload-network">reload network</button>
+      </div>
+    </section>
   </div>
   <script src="static/javascript/centrifuge.js"></script>
   <script type="module">
@@ -79,6 +82,9 @@
     document
       .querySelector("#reload-network")
       .addEventListener("click", reloadNetwork);
+      document
+      .querySelector("#logout")
+      .addEventListener("click", logout);
 
     const online = document.getElementById("online");
     const osversion = document.getElementById("osversion");
@@ -98,7 +104,15 @@
       return btoa(binString);
     }
 
-    async function getLoginToken() {
+    async function logout() {
+      centrifuge.disconnect()
+      document.querySelector("#login").style.display = "flex"
+      document.querySelector("#logout").style.display = "none"
+      document.querySelector("section").style.display = "none"
+    }
+
+    async function getLoginToken(e) {
+      e.preventDefault()
       const response = new Promise(function (resolve, reject) {
         var user = document.getElementById("user").value;
         var password = document.getElementById("password").value;
@@ -139,6 +153,10 @@
         })
         .on("connected", function (ctx) {
           console.log(`connected over ${ctx.transport}`);
+          document.querySelector("#login").style.display = "none"
+          document.querySelector("#logout").style.display = "inline-block"
+          document.querySelector("section").style.display = "block"
+          document.querySelector("#password").value = ""
         })
         .on("disconnected", function (ctx) {
           console.log(`disconnected: ${ctx.code}, ${ctx.reason}`);

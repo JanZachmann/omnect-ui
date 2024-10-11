@@ -104,8 +104,16 @@ h3 {
 }
 
 .login-wrapper {
-  margin-bottom: 16px;
+  margin-bottom: 1px;
   display: flex;
   flex-direction: column;
   row-gap: 16px;
+}
+
+#logout {
+  display: none;
+}
+
+section {
+  display: none;
 }
