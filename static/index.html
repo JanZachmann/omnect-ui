@@ -230,7 +230,7 @@
 
       subNetworkStatus
         .on("publication", function (ctx) {
-          setTimeout(ctx.data);
+          setNetworkStatus(ctx.data);
         })
         .subscribe();
     }
