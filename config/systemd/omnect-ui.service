@@ -14,7 +14,7 @@ ExecStart=/bin/bash -c 'FULL_TAG=$(docker load < /mnt/factory/oci_images/omnect-
                         docker rm -f omnect-ui || true ; \
                         docker run -d --restart always --name omnect-ui \
                             --user $(id -u omnect_device_socket):$(id -g omnect_device_socket) \
-                            --mount type=bind,source=/run/omnect-device-service/api.sock,target=/socket/api.sock \
+                            -v /run/omnect-device-service:/socket \
                             --mount type=bind,source=${CERT_PATH},target=/cert/device_id_cert.pem \
                             --mount type=bind,source=${CERT_KEY_PATH},target=/cert/device_id_cert_key.pem \
                             -p ${UI_PORT}:${UI_PORT} \
