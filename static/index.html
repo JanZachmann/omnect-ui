@@ -2,6 +2,7 @@
 
 <head>
   <title>Centrifugo quick start</title>
+  <link rel="icon" href="static/images/favicon.ico" sizes="48x48" >
   <link rel="stylesheet" href="static/css/styles.css" />
 </head>
 
@@ -12,53 +13,56 @@
       <h2 class="primary">omnect <span class="secondary">ui</span></h2>
     </div>
 
-    <h3>Login</h3>
-    <div class="login-wrapper">
-      <input class="input-style" type="text" name="user" id="user" />
-      <input class="input-style" type="password" name="pass" id="password" />
-      <button class="btn" id="login">login</button>
-    </div>
+    <button id="logout" class="btn" type="button">logout</button>
+    <form class="login-wrapper" id="login" method="post">
+      <h3>Login</h3>
+      <input class="input-style" type="text" name="user" id="user" autocomplete="username" required />
+      <input class="input-style" type="password" name="pass" id="password" autocomplete="current-password" required />
+      <button class="btn" type="submit">login</button>
+    </form>
 
-    <h3>Stats</h3>
-    <div class="key-value-wrapper">
-      <div class="key">online:</div>
-      <div id="online">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">os-version:</div>
-      <div id="osversion">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">os-name:</div>
-      <div id="osname">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">wait online timeout secs:</div>
-      <div id="wait-online-timeout">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">omnect-device-service-version:</div>
-      <div id="omnect-device-service-version">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">azure-sdk-version:</div>
-      <div id="azure-sdk-version">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">factory-reset-result:</div>
-      <div id="factory-reset-result">N/A</div>
-    </div>
-    <div class="key-value-wrapper">
-      <div class="key">network-status:</div>
-      <div id="network-status">N/A</div>
-    </div>
+    <section>
+      <h3>Stats</h3>
+      <div class="key-value-wrapper">
+        <div class="key">online:</div>
+        <div id="online">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">os-version:</div>
+        <div id="osversion">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">os-name:</div>
+        <div id="osname">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">wait online timeout secs:</div>
+        <div id="wait-online-timeout">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">omnect-device-service-version:</div>
+        <div id="omnect-device-service-version">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">azure-sdk-version:</div>
+        <div id="azure-sdk-version">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">factory-reset-result:</div>
+        <div id="factory-reset-result">N/A</div>
+      </div>
+      <div class="key-value-wrapper">
+        <div class="key">network-status:</div>
+        <div id="network-status">N/A</div>
+      </div>
 
-    <h3>Commands</h3>
-    <div class="commands">
-      <button class="btn" id="factory-reset">factory reset</button>
-      <button class="btn" id="reboot">reboot</button>
-      <button class="btn" id="reload-network">reload network</button>
-    </div>
+      <h3>Commands</h3>
+      <div class="commands">
+        <button class="btn" id="factory-reset">factory reset</button>
+        <button class="btn" id="reboot">reboot</button>
+        <button class="btn" id="reload-network">reload network</button>
+      </div>
+    </section>
   </div>
   <script src="static/javascript/centrifuge.js"></script>
   <script type="module">
@@ -73,12 +77,15 @@
 
     document
       .querySelector("#login")
-      .addEventListener("click", await getLoginToken);
+      .addEventListener("submit", await getLoginToken);
     document.querySelector("#factory-reset").addEventListener("click", factoryReset);
     document.querySelector("#reboot").addEventListener("click", reboot);
     document
       .querySelector("#reload-network")
       .addEventListener("click", reloadNetwork);
+      document
+      .querySelector("#logout")
+      .addEventListener("click", logout);
 
     const online = document.getElementById("online");
     const osversion = document.getElementById("osversion");
@@ -98,7 +105,16 @@
       return btoa(binString);
     }
 
-    async function getLoginToken() {
+    async function logout() {
+      centrifuge.disconnect()
+      document.querySelector("#login").style.display = "flex"
+      document.querySelector("#logout").style.display = "none"
+      document.querySelector("section").style.display = "none"
+      networkStatus.innerHTML = "N/A"
+    }
+
+    async function getLoginToken(e) {
+      e.preventDefault()
       const response = new Promise(function (resolve, reject) {
         var user = document.getElementById("user").value;
         var password = document.getElementById("password").value;
@@ -139,9 +155,14 @@
         })
         .on("connected", function (ctx) {
           console.log(`connected over ${ctx.transport}`);
+          document.querySelector("#login").style.display = "none"
+          document.querySelector("#logout").style.display = "inline-block"
+          document.querySelector("section").style.display = "block"
+          document.querySelector("#password").value = ""
         })
         .on("disconnected", function (ctx) {
           console.log(`disconnected: ${ctx.code}, ${ctx.reason}`);
+          logout()
         })
         .connect();
 
@@ -212,7 +233,7 @@
 
       subNetworkStatus
         .on("publication", function (ctx) {
-          setTimeout(ctx.data);
+          setNetworkStatus(ctx.data);
         })
         .subscribe();
     }
@@ -273,9 +294,78 @@
 
     function setNetworkStatus(data) {
       if (typeof data["network-status"] !== "undefined") {
-        networkStatus.innerHTML =
-        JSON.stringify(data["network-status"]);
+        networkStatus.innerHTML = ""
+        for(const networkInterface of data["network-status"]) {
+          const stateElement = document.createElement("div")
+          stateElement.classList.add(networkInterface.online ? "online": "offline")
+
+          networkStatus.appendChild(networkStatusAddValue(networkInterface.name, stateElement))
+          networkStatus.appendChild(networkStatusAddValue("MAC", networkInterface.mac))
+          if(Object.hasOwn(networkInterface, "ipv4")) {
+            networkStatus.appendChild(networkStatusAddValue("IPv4"))
+            for(const [i, addr] of networkInterface.ipv4.addrs.entries()) {
+              const dhcpStatic = addr.dhcp ? "DHCP" : "Static"
+              networkStatus.appendChild(networkStatusAddValue(`Addr${i}`, `${addr.addr}/${addr.prefix_len} (${dhcpStatic})`))
+            }
+            networkStatus.appendChild(networkStatusAddValue("DNS", networkInterface.ipv4.dns))
+            networkStatus.appendChild(networkStatusAddValue("Gateways", networkInterface.ipv4.gateways))
+          }
+
+          if(Object.hasOwn(networkInterface, "ipv6")) {
+            networkStatus.appendChild(networkStatusAddValue("IPv6"))
+            for(const [i, addr] of networkInterface.ipv6.addrs.entries()) {
+              const dhcpStatic = addr.dhcp ? "DHCP" : "Static"
+              networkStatus.appendChild(networkStatusAddValue(`Addr${i}`, `${addr.addr}/${addr.prefix_len} (${dhcpStatic})`))
+            }
+            networkStatus.appendChild(networkStatusAddValue("DNS", networkInterface.ipv6.dns))
+            networkStatus.appendChild(networkStatusAddValue("Gateways", networkInterface.ipv6.gateways))
+          }
+
+          const spacer = document.createElement("div")
+          spacer.classList.add("spacer")
+
+          networkStatus.appendChild(spacer)
+        }
       }
+    }
+
+    function networkStatusAddValue(key, value) {
+      const keyValueWrapper = document.createElement("div")
+      keyValueWrapper.classList.add("key-value-wrapper")
+      keyValueWrapper.classList.add("divider")
+
+      const keyElem = document.createElement("div")
+      keyElem.classList.add("key")
+      keyElem.textContent = `${key}:`
+
+      const valueElem = document.createElement("div")
+      if(value && value.nodeType) {
+        valueElem.appendChild(value)
+      } else if(value) {
+        valueElem.textContent = value
+      }
+
+      keyValueWrapper.appendChild(keyElem)
+      keyValueWrapper.appendChild(valueElem)
+
+      return keyValueWrapper
+    }
+
+    function networkStatusAddValues(key, value) {
+      const keyValueWrapper = document.createElement("div")
+      keyValueWrapper.classList.add("key-value-wrapper")
+
+      const keyElem = document.createElement("div")
+      keyElem.classList.add("key")
+      keyElem.textContent = `${key}:`
+
+      const valueElem = document.createElement("div")
+      valueElem.textContent = value.join(",")
+
+      keyValueWrapper.appendChild(keyElem)
+      keyValueWrapper.appendChild(valueElem)
+
+      return keyValueWrapper
     }
 
     function factoryReset() {
