@@ -1,3 +1,9 @@
+:root {
+  --border: rgb(203, 213, 224);
+  --success: #4caf50;
+  --error: #cf6679;
+}
+
 body {
   background: #f9f9f9;
   padding: 0 24px;
@@ -74,6 +80,7 @@ h2 {
 .commands {
   display: flex;
   column-gap: 16px;
+  margin-bottom: 10px;
 }
 
 h3 {
@@ -104,7 +111,7 @@ h3 {
 }
 
 .login-wrapper {
-  margin-bottom: 1px;
+  margin-bottom: 16px;
   display: flex;
   flex-direction: column;
   row-gap: 16px;
@@ -116,4 +123,28 @@ h3 {
 
 section {
   display: none;
+}
+
+.online, .offline {
+  width: 15px;
+  height: 15px;
+  border-radius: 15px;
+}
+
+.online {
+  background-color: var(--success);
+}
+
+.offline {
+  background-color: var(--error);
+}
+
+.divider {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: .5em;
+  padding-bottom: .5em;
+}
+
+.spacer {
+  height: 2em;
 }

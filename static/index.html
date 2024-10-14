@@ -2,6 +2,7 @@
 
 <head>
   <title>Centrifugo quick start</title>
+  <link rel="icon" href="static/images/favicon.ico" sizes="48x48" >
   <link rel="stylesheet" href="static/css/styles.css" />
 </head>
 
@@ -15,8 +16,8 @@
     <button id="logout" class="btn" type="button">logout</button>
     <form class="login-wrapper" id="login" method="post">
       <h3>Login</h3>
-      <input class="input-style" type="text" name="user" id="user" required />
-      <input class="input-style" type="password" name="pass" id="password" required />
+      <input class="input-style" type="text" name="user" id="user" autocomplete="username" required />
+      <input class="input-style" type="password" name="pass" id="password" autocomplete="current-password" required />
       <button class="btn" type="submit">login</button>
     </form>
 
@@ -76,7 +77,7 @@
 
     document
       .querySelector("#login")
-      .addEventListener("click", await getLoginToken);
+      .addEventListener("submit", await getLoginToken);
     document.querySelector("#factory-reset").addEventListener("click", factoryReset);
     document.querySelector("#reboot").addEventListener("click", reboot);
     document
@@ -109,6 +110,7 @@
       document.querySelector("#login").style.display = "flex"
       document.querySelector("#logout").style.display = "none"
       document.querySelector("section").style.display = "none"
+      networkStatus.innerHTML = "N/A"
     }
 
     async function getLoginToken(e) {
@@ -160,6 +162,7 @@
         })
         .on("disconnected", function (ctx) {
           console.log(`disconnected: ${ctx.code}, ${ctx.reason}`);
+          logout()
         })
         .connect();
 
@@ -291,9 +294,78 @@
 
     function setNetworkStatus(data) {
       if (typeof data["network-status"] !== "undefined") {
-        networkStatus.innerHTML =
-        JSON.stringify(data["network-status"]);
+        networkStatus.innerHTML = ""
+        for(const networkInterface of data["network-status"]) {
+          const stateElement = document.createElement("div")
+          stateElement.classList.add(networkInterface.online ? "online": "offline")
+
+          networkStatus.appendChild(networkStatusAddValue(networkInterface.name, stateElement))
+          networkStatus.appendChild(networkStatusAddValue("MAC", networkInterface.mac))
+          if(Object.hasOwn(networkInterface, "ipv4")) {
+            networkStatus.appendChild(networkStatusAddValue("IPv4"))
+            for(const [i, addr] of networkInterface.ipv4.addrs.entries()) {
+              const dhcpStatic = addr.dhcp ? "DHCP" : "Static"
+              networkStatus.appendChild(networkStatusAddValue(`Addr${i}`, `${addr.addr}/${addr.prefix_len} (${dhcpStatic})`))
+            }
+            networkStatus.appendChild(networkStatusAddValue("DNS", networkInterface.ipv4.dns))
+            networkStatus.appendChild(networkStatusAddValue("Gateways", networkInterface.ipv4.gateways))
+          }
+
+          if(Object.hasOwn(networkInterface, "ipv6")) {
+            networkStatus.appendChild(networkStatusAddValue("IPv6"))
+            for(const [i, addr] of networkInterface.ipv6.addrs.entries()) {
+              const dhcpStatic = addr.dhcp ? "DHCP" : "Static"
+              networkStatus.appendChild(networkStatusAddValue(`Addr${i}`, `${addr.addr}/${addr.prefix_len} (${dhcpStatic})`))
+            }
+            networkStatus.appendChild(networkStatusAddValue("DNS", networkInterface.ipv6.dns))
+            networkStatus.appendChild(networkStatusAddValue("Gateways", networkInterface.ipv6.gateways))
+          }
+
+          const spacer = document.createElement("div")
+          spacer.classList.add("spacer")
+
+          networkStatus.appendChild(spacer)
+        }
       }
+    }
+
+    function networkStatusAddValue(key, value) {
+      const keyValueWrapper = document.createElement("div")
+      keyValueWrapper.classList.add("key-value-wrapper")
+      keyValueWrapper.classList.add("divider")
+
+      const keyElem = document.createElement("div")
+      keyElem.classList.add("key")
+      keyElem.textContent = `${key}:`
+
+      const valueElem = document.createElement("div")
+      if(value && value.nodeType) {
+        valueElem.appendChild(value)
+      } else if(value) {
+        valueElem.textContent = value
+      }
+
+      keyValueWrapper.appendChild(keyElem)
+      keyValueWrapper.appendChild(valueElem)
+
+      return keyValueWrapper
+    }
+
+    function networkStatusAddValues(key, value) {
+      const keyValueWrapper = document.createElement("div")
+      keyValueWrapper.classList.add("key-value-wrapper")
+
+      const keyElem = document.createElement("div")
+      keyElem.classList.add("key")
+      keyElem.textContent = `${key}:`
+
+      const valueElem = document.createElement("div")
+      valueElem.textContent = value.join(",")
+
+      keyValueWrapper.appendChild(keyElem)
+      keyValueWrapper.appendChild(valueElem)
+
+      return keyValueWrapper
     }
 
     function factoryReset() {
