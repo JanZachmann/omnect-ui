@@ -2,7 +2,7 @@
   --border: rgb(203, 213, 224);
   --success: #4caf50;
   --error: #cf6679;
-
+  --primary: #677680;
   --secondary: #0094b1;
 }
 
@@ -72,11 +72,11 @@ h2 {
 }
 
 .primary {
-  color: #677680;
+  color: var(--primary);
 }
 
 .secondary {
-  color: #0094b1;
+  color: var(--secondary);
 }
 
 .commands {
