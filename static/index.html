@@ -8,6 +8,12 @@
 
 <body>
   <div class="content-wrapper">
+
+    <dialog id="spinner">
+      <p class="dialog-title"></p>
+      <span class="loader"></span>
+    </dialog>
+
     <div class="logo-container">
       <img src="static/images/logo.png" width="64px" height="64px" alt="" />
       <h2 class="primary">omnect <span class="secondary">ui</span></h2>
@@ -97,6 +103,8 @@
     const azureSdkVersion = document.getElementById("azure-sdk-version");
     const factoryResetResult = document.getElementById("factory-reset-result");
     const networkStatus = document.getElementById("network-status");
+    const dialog = document.getElementById("spinner");
+    const dialogTitle = document.querySelector("dialog-title")
 
     function bytesToBase64(bytes) {
       const binString = Array.from(bytes, (byte) =>
@@ -159,6 +167,7 @@
           document.querySelector("#logout").style.display = "inline-block"
           document.querySelector("section").style.display = "block"
           document.querySelector("#password").value = ""
+          dialog.close()
         })
         .on("disconnected", function (ctx) {
           console.log(`disconnected: ${ctx.code}, ${ctx.reason}`);
@@ -369,12 +378,16 @@
     }
 
     function factoryReset() {
+      dialog.showModal()
+      dialogTitle.textContent = "Please wait. Device is resetting."
       xhr.open("POST", "factory-reset", true);
       xhr.setRequestHeader("Authorization", "Bearer " + token);
       xhr.send();
     }
 
     function reboot() {
+      dialog.showModal()
+      dialogTitle.textContent = "Please wait. Device is rebooting."
       xhr.open("POST", "reboot", true);
       xhr.setRequestHeader("Authorization", "Bearer " + token);
       xhr.send();
