@@ -5,10 +5,12 @@ tools/centrifugo
 *.tar.gz
 *.env
 *.http
-/dist
 .claude/
 .gemini/
 .pnpm-store/
+
+# Build outputs (root level only)
+/dist
 
 # Generated WASM package (rebuild with wasm-pack)
 src/ui/src/core/pkg/
@@ -16,8 +18,3 @@ src/ui/src/core/pkg/
 # Research and documentation files (generated, not part of source)
 *.md
 !README.md
-
-# E2E Test Artifacts
-src/ui/playwright-report/
-src/ui/test-results/
-temp/

@@ -186,3 +186,321 @@ pub fn handle(event: DeviceEvent, model: &mut Model) -> Command<Effect, Event> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::events::{DeviceEvent, Event};
+    use crate::types::{DeviceOperationState, UploadState};
+    use crate::{App, UpdateManifest};
+    use crux_core::testing::AppTester;
+
+    mod reboot {
+        use super::*;
+
+        #[test]
+        fn success_sets_rebooting_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::RebootResponse(Ok(()))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert_eq!(model.device_operation_state, DeviceOperationState::Rebooting);
+            assert_eq!(model.success_message, Some("Reboot initiated".into()));
+            assert!(model.overlay_spinner.is_visible());
+        }
+
+        #[test]
+        fn network_error_sets_rebooting_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::RebootResponse(Err("Failed to fetch".into()))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert_eq!(model.device_operation_state, DeviceOperationState::Rebooting);
+            assert_eq!(
+                model.success_message,
+                Some("Reboot initiated (connection lost)".into())
+            );
+        }
+
+        #[test]
+        fn non_network_error_sets_error() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::RebootResponse(Err("Permission denied".into()))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert_eq!(model.device_operation_state, DeviceOperationState::Idle);
+            assert_eq!(model.error_message, Some("Permission denied".into()));
+            assert!(!model.overlay_spinner.is_visible());
+        }
+    }
+
+    mod factory_reset {
+        use super::*;
+
+        #[test]
+        fn invalid_mode_sets_error() {
+            let app = AppTester::<App>::default();
+            let mut model = Model::default();
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::FactoryResetRequest {
+                    mode: "invalid".into(),
+                    preserve: vec![],
+                }),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert!(model.error_message.is_some());
+            assert!(model
+                .error_message
+                .as_ref()
+                .unwrap()
+                .contains("Invalid factory reset mode"));
+        }
+
+        #[test]
+        fn success_sets_factory_resetting_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::FactoryResetResponse(Ok(()))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert_eq!(
+                model.device_operation_state,
+                DeviceOperationState::FactoryResetting
+            );
+            assert_eq!(
+                model.success_message,
+                Some("Factory reset initiated".into())
+            );
+            assert!(model.overlay_spinner.is_visible());
+        }
+
+        #[test]
+        fn network_error_sets_factory_resetting_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::FactoryResetResponse(Err(
+                    "NetworkError when attempting to fetch".into(),
+                ))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert_eq!(
+                model.device_operation_state,
+                DeviceOperationState::FactoryResetting
+            );
+            assert_eq!(
+                model.success_message,
+                Some("Factory reset initiated (connection lost)".into())
+            );
+        }
+    }
+
+    mod firmware_upload {
+        use super::*;
+
+        #[test]
+        fn upload_started_sets_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model::default();
+
+            let _ = app.update(Event::Device(DeviceEvent::UploadStarted), &mut model);
+
+            assert_eq!(model.firmware_upload_state, UploadState::Uploading);
+            assert!(model.overlay_spinner.is_visible());
+        }
+
+        #[test]
+        fn upload_progress_updates_spinner() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                firmware_upload_state: UploadState::Uploading,
+                overlay_spinner: OverlaySpinnerState::new("Uploading...").with_progress(0),
+                ..Default::default()
+            };
+
+            let _ = app.update(Event::Device(DeviceEvent::UploadProgress(50)), &mut model);
+
+            assert_eq!(model.firmware_upload_state, UploadState::Uploading);
+        }
+
+        #[test]
+        fn upload_completed_sets_success() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                firmware_upload_state: UploadState::Uploading,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::UploadCompleted("/tmp/file.swu".into())),
+                &mut model,
+            );
+
+            assert_eq!(model.firmware_upload_state, UploadState::Completed);
+            assert_eq!(model.success_message, Some("Upload successful".into()));
+            assert!(!model.overlay_spinner.is_visible());
+        }
+
+        #[test]
+        fn upload_failed_sets_error() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                firmware_upload_state: UploadState::Uploading,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::UploadFailed("Network timeout".into())),
+                &mut model,
+            );
+
+            assert!(matches!(
+                model.firmware_upload_state,
+                UploadState::Failed(_)
+            ));
+            assert!(model.error_message.is_some());
+            assert!(model
+                .error_message
+                .as_ref()
+                .unwrap()
+                .contains("Upload failed"));
+            assert!(!model.overlay_spinner.is_visible());
+        }
+    }
+
+    mod load_update {
+        use super::*;
+
+        #[test]
+        fn success_stores_manifest() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let manifest = UpdateManifest {
+                update_id: crate::types::UpdateId {
+                    provider: "test".into(),
+                    name: "test-update".into(),
+                    version: "1.0.0".into(),
+                },
+                is_deployable: true,
+                compatibility: vec![],
+                created_date_time: "2024-01-01".into(),
+                manifest_version: "1".into(),
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::LoadUpdateResponse(Ok(manifest.clone()))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert_eq!(model.update_manifest, Some(manifest));
+            assert_eq!(model.success_message, Some("Update loaded".into()));
+        }
+
+        #[test]
+        fn failure_sets_error() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::LoadUpdateResponse(Err("File not found".into()))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert_eq!(model.error_message, Some("File not found".into()));
+            assert!(model.update_manifest.is_none());
+        }
+    }
+
+    mod run_update {
+        use super::*;
+
+        #[test]
+        fn success_sets_updating_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::RunUpdateResponse(Ok(()))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert_eq!(model.device_operation_state, DeviceOperationState::Updating);
+            assert_eq!(model.success_message, Some("Update started".into()));
+            assert!(model.overlay_spinner.is_visible());
+        }
+
+        #[test]
+        fn network_error_sets_updating_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::RunUpdateResponse(Err("IO error".into()))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert_eq!(model.device_operation_state, DeviceOperationState::Updating);
+            assert_eq!(
+                model.success_message,
+                Some("Update started (connection lost)".into())
+            );
+        }
+    }
+}

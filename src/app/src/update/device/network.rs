@@ -308,3 +308,610 @@ pub fn handle_ack_rollback(model: &mut Model) -> Command<Effect, Event> {
         "Acknowledge rollback"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::events::{DeviceEvent, Event};
+    use crate::model::Model;
+    use crate::types::{
+        DeviceNetwork, HealthcheckInfo, InternetProtocol, IpAddress, NetworkChangeState,
+        NetworkFormData, NetworkFormState, NetworkStatus, SetNetworkConfigResponse,
+        UpdateValidationStatus, VersionInfo,
+    };
+    use crate::App;
+    use crux_core::testing::AppTester;
+
+    fn create_test_network_adapter(name: &str, ip: &str, dhcp: bool) -> DeviceNetwork {
+        DeviceNetwork {
+            name: name.to_string(),
+            mac: "00:11:22:33:44:55".to_string(),
+            online: true,
+            file: Some("/etc/network/interfaces".to_string()),
+            ipv4: InternetProtocol {
+                addrs: vec![IpAddress {
+                    addr: ip.to_string(),
+                    dhcp,
+                    prefix_len: 24,
+                }],
+                dns: vec!["8.8.8.8".to_string()],
+                gateways: vec!["192.168.1.1".to_string()],
+            },
+        }
+    }
+
+    mod network_form {
+        use super::*;
+
+        #[test]
+        fn start_edit_transitions_to_editing_state() {
+            let app = AppTester::<App>::default();
+            let adapter = create_test_network_adapter("eth0", "192.168.1.100", false);
+            let mut model = Model {
+                network_status: Some(NetworkStatus {
+                    network_status: vec![adapter.clone()],
+                }),
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::NetworkFormStartEdit {
+                    adapter_name: "eth0".to_string(),
+                }),
+                &mut model,
+            );
+
+            assert!(matches!(
+                model.network_form_state,
+                NetworkFormState::Editing { .. }
+            ));
+            if let NetworkFormState::Editing {
+                adapter_name,
+                form_data,
+                original_data,
+            } = model.network_form_state
+            {
+                assert_eq!(adapter_name, "eth0");
+                assert_eq!(form_data.ip_address, "192.168.1.100");
+                assert!(!form_data.dhcp);
+                assert_eq!(form_data, original_data);
+            }
+            assert!(!model.network_form_dirty);
+        }
+
+        #[test]
+        fn update_with_unchanged_data_keeps_clean_flag() {
+            let app = AppTester::<App>::default();
+            let form_data = NetworkFormData {
+                name: "eth0".to_string(),
+                ip_address: "192.168.1.100".to_string(),
+                dhcp: false,
+                prefix_len: 24,
+                dns: vec!["8.8.8.8".to_string()],
+                gateways: vec!["192.168.1.1".to_string()],
+            };
+
+            let mut model = Model {
+                network_form_state: NetworkFormState::Editing {
+                    adapter_name: "eth0".to_string(),
+                    form_data: form_data.clone(),
+                    original_data: form_data.clone(),
+                },
+                network_form_dirty: false,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::NetworkFormUpdate {
+                    form_data: serde_json::to_string(&form_data).unwrap(),
+                }),
+                &mut model,
+            );
+
+            assert!(!model.network_form_dirty);
+        }
+
+        #[test]
+        fn update_with_changed_data_sets_dirty_flag() {
+            let app = AppTester::<App>::default();
+            let original_data = NetworkFormData {
+                name: "eth0".to_string(),
+                ip_address: "192.168.1.100".to_string(),
+                dhcp: false,
+                prefix_len: 24,
+                dns: vec!["8.8.8.8".to_string()],
+                gateways: vec!["192.168.1.1".to_string()],
+            };
+
+            let mut changed_data = original_data.clone();
+            changed_data.ip_address = "192.168.1.101".to_string();
+
+            let mut model = Model {
+                network_form_state: NetworkFormState::Editing {
+                    adapter_name: "eth0".to_string(),
+                    form_data: original_data.clone(),
+                    original_data: original_data.clone(),
+                },
+                network_form_dirty: false,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::NetworkFormUpdate {
+                    form_data: serde_json::to_string(&changed_data).unwrap(),
+                }),
+                &mut model,
+            );
+
+            assert!(model.network_form_dirty);
+        }
+
+        #[test]
+        fn reset_restarts_edit_from_original_adapter_data() {
+            let app = AppTester::<App>::default();
+            let adapter = create_test_network_adapter("eth0", "192.168.1.100", false);
+
+            let modified_data = NetworkFormData {
+                name: "eth0".to_string(),
+                ip_address: "192.168.1.200".to_string(),
+                dhcp: false,
+                prefix_len: 24,
+                dns: vec!["1.1.1.1".to_string()],
+                gateways: vec!["192.168.1.254".to_string()],
+            };
+
+            let mut model = Model {
+                network_status: Some(NetworkStatus {
+                    network_status: vec![adapter.clone()],
+                }),
+                network_form_state: NetworkFormState::Editing {
+                    adapter_name: "eth0".to_string(),
+                    form_data: modified_data,
+                    original_data: NetworkFormData::from(&adapter),
+                },
+                network_form_dirty: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::NetworkFormReset {
+                    adapter_name: "eth0".to_string(),
+                }),
+                &mut model,
+            );
+
+            if let NetworkFormState::Editing {
+                form_data,
+                original_data,
+                ..
+            } = model.network_form_state
+            {
+                assert_eq!(form_data.ip_address, "192.168.1.100");
+                assert_eq!(original_data.ip_address, "192.168.1.100");
+            }
+            assert!(!model.network_form_dirty);
+        }
+    }
+
+    mod network_configuration {
+        use super::*;
+
+        #[test]
+        fn static_ip_with_rollback_enters_waiting_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                network_change_state: NetworkChangeState::ApplyingConfig {
+                    is_server_addr: true,
+                    ip_changed: true,
+                    new_ip: "192.168.1.101".to_string(),
+                    old_ip: "192.168.1.100".to_string(),
+                    switching_to_dhcp: false,
+                },
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let response = SetNetworkConfigResponse {
+                rollback_timeout_seconds: 60,
+                ui_port: 443,
+                rollback_enabled: true,
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::SetNetworkConfigResponse(Ok(response))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert_eq!(
+                model.success_message,
+                Some("Network configuration updated".to_string())
+            );
+            assert!(matches!(
+                model.network_change_state,
+                NetworkChangeState::WaitingForNewIp { .. }
+            ));
+            if let NetworkChangeState::WaitingForNewIp {
+                new_ip,
+                rollback_timeout_seconds,
+                switching_to_dhcp,
+                ..
+            } = model.network_change_state
+            {
+                assert_eq!(new_ip, "192.168.1.101");
+                assert_eq!(rollback_timeout_seconds, 60);
+                assert!(!switching_to_dhcp);
+            }
+            assert_eq!(model.network_form_state, NetworkFormState::Idle);
+        }
+
+        #[test]
+        fn static_ip_without_rollback_enters_waiting_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                network_change_state: NetworkChangeState::ApplyingConfig {
+                    is_server_addr: true,
+                    ip_changed: true,
+                    new_ip: "192.168.1.101".to_string(),
+                    old_ip: "192.168.1.100".to_string(),
+                    switching_to_dhcp: false,
+                },
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let response = SetNetworkConfigResponse {
+                rollback_timeout_seconds: 0,
+                ui_port: 443,
+                rollback_enabled: false,
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::SetNetworkConfigResponse(Ok(response))),
+                &mut model,
+            );
+
+            assert!(matches!(
+                model.network_change_state,
+                NetworkChangeState::WaitingForNewIp { .. }
+            ));
+            if let NetworkChangeState::WaitingForNewIp {
+                rollback_timeout_seconds,
+                ..
+            } = model.network_change_state
+            {
+                assert_eq!(rollback_timeout_seconds, 0);
+            }
+        }
+
+        #[test]
+        fn dhcp_with_rollback_enters_waiting_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                network_change_state: NetworkChangeState::ApplyingConfig {
+                    is_server_addr: true,
+                    ip_changed: true,
+                    new_ip: "".to_string(),
+                    old_ip: "192.168.1.100".to_string(),
+                    switching_to_dhcp: true,
+                },
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let response = SetNetworkConfigResponse {
+                rollback_timeout_seconds: 60,
+                ui_port: 443,
+                rollback_enabled: true,
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::SetNetworkConfigResponse(Ok(response))),
+                &mut model,
+            );
+
+            assert!(matches!(
+                model.network_change_state,
+                NetworkChangeState::WaitingForNewIp { .. }
+            ));
+            if let NetworkChangeState::WaitingForNewIp {
+                switching_to_dhcp, ..
+            } = model.network_change_state
+            {
+                assert!(switching_to_dhcp);
+            }
+        }
+
+        #[test]
+        fn dhcp_without_rollback_goes_to_idle() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                network_change_state: NetworkChangeState::ApplyingConfig {
+                    is_server_addr: true,
+                    ip_changed: true,
+                    new_ip: "".to_string(),
+                    old_ip: "192.168.1.100".to_string(),
+                    switching_to_dhcp: true,
+                },
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let response = SetNetworkConfigResponse {
+                rollback_timeout_seconds: 0,
+                ui_port: 443,
+                rollback_enabled: false,
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::SetNetworkConfigResponse(Ok(response))),
+                &mut model,
+            );
+
+            assert_eq!(model.network_change_state, NetworkChangeState::Idle);
+            assert!(model.overlay_spinner.is_visible());
+            assert!(model.overlay_spinner.countdown_seconds().is_none());
+        }
+
+        #[test]
+        fn non_server_adapter_returns_to_idle() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                network_change_state: NetworkChangeState::Idle,
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let response = SetNetworkConfigResponse {
+                rollback_timeout_seconds: 60,
+                ui_port: 443,
+                rollback_enabled: true,
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::SetNetworkConfigResponse(Ok(response))),
+                &mut model,
+            );
+
+            assert_eq!(model.network_change_state, NetworkChangeState::Idle);
+            assert!(!model.overlay_spinner.is_visible());
+        }
+
+        #[test]
+        fn error_resets_to_editing_state() {
+            let app = AppTester::<App>::default();
+            let form_data = NetworkFormData {
+                name: "eth0".to_string(),
+                ip_address: "192.168.1.100".to_string(),
+                dhcp: false,
+                prefix_len: 24,
+                dns: vec![],
+                gateways: vec![],
+            };
+
+            let mut model = Model {
+                network_form_state: NetworkFormState::Submitting {
+                    adapter_name: "eth0".to_string(),
+                    form_data: form_data.clone(),
+                    original_data: form_data.clone(),
+                },
+                network_change_state: NetworkChangeState::ApplyingConfig {
+                    is_server_addr: true,
+                    ip_changed: true,
+                    new_ip: "192.168.1.101".to_string(),
+                    old_ip: "192.168.1.100".to_string(),
+                    switching_to_dhcp: false,
+                },
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::SetNetworkConfigResponse(Err(
+                    "Network error".to_string(),
+                ))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert!(model.error_message.is_some());
+            assert_eq!(model.network_change_state, NetworkChangeState::Idle);
+            assert!(matches!(
+                model.network_form_state,
+                NetworkFormState::Editing { .. }
+            ));
+        }
+    }
+
+    mod ip_change_detection {
+        use super::*;
+
+        #[test]
+        fn tick_increments_attempt_counter() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                network_change_state: NetworkChangeState::WaitingForNewIp {
+                    new_ip: "192.168.1.101".to_string(),
+                    attempt: 0,
+                    rollback_timeout_seconds: 60,
+                    ui_port: 443,
+                    switching_to_dhcp: false,
+                },
+                ..Default::default()
+            };
+
+            let _ = app.update(Event::Device(DeviceEvent::NewIpCheckTick), &mut model);
+
+            if let NetworkChangeState::WaitingForNewIp { attempt, .. } =
+                model.network_change_state
+            {
+                assert_eq!(attempt, 1);
+            }
+        }
+
+        #[test]
+        fn tick_skips_polling_when_switching_to_dhcp() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                network_change_state: NetworkChangeState::WaitingForNewIp {
+                    new_ip: "".to_string(),
+                    attempt: 0,
+                    rollback_timeout_seconds: 60,
+                    ui_port: 443,
+                    switching_to_dhcp: true,
+                },
+                ..Default::default()
+            };
+
+            let _ = app.update(Event::Device(DeviceEvent::NewIpCheckTick), &mut model);
+
+            if let NetworkChangeState::WaitingForNewIp { attempt, .. } =
+                model.network_change_state
+            {
+                assert_eq!(attempt, 1);
+            }
+        }
+
+        #[test]
+        fn timeout_transitions_to_timeout_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                network_change_state: NetworkChangeState::WaitingForNewIp {
+                    new_ip: "192.168.1.101".to_string(),
+                    attempt: 10,
+                    rollback_timeout_seconds: 60,
+                    ui_port: 443,
+                    switching_to_dhcp: false,
+                },
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::NewIpCheckTimeout),
+                &mut model,
+            );
+
+            assert!(matches!(
+                model.network_change_state,
+                NetworkChangeState::NewIpTimeout { .. }
+            ));
+            if let NetworkChangeState::NewIpTimeout { new_ip, ui_port } =
+                model.network_change_state
+            {
+                assert_eq!(new_ip, "192.168.1.101");
+                assert_eq!(ui_port, 443);
+            }
+            assert!(model.overlay_spinner.timed_out());
+        }
+
+        #[test]
+        fn successful_healthcheck_on_new_ip() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                network_change_state: NetworkChangeState::WaitingForNewIp {
+                    new_ip: "192.168.1.101".to_string(),
+                    attempt: 5,
+                    rollback_timeout_seconds: 60,
+                    ui_port: 443,
+                    switching_to_dhcp: false,
+                },
+                ..Default::default()
+            };
+
+            let healthcheck = HealthcheckInfo {
+                version_info: VersionInfo {
+                    required: "1.0.0".to_string(),
+                    current: "1.0.0".to_string(),
+                    mismatch: false,
+                },
+                update_validation_status: UpdateValidationStatus {
+                    status: "valid".to_string(),
+                },
+                network_rollback_occurred: false,
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::HealthcheckResponse(Ok(healthcheck.clone()))),
+                &mut model,
+            );
+
+            assert_eq!(model.healthcheck, Some(healthcheck));
+        }
+    }
+
+    mod rollback_acknowledgment {
+        use super::*;
+
+        #[test]
+        fn clears_rollback_flag_in_healthcheck() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                healthcheck: Some(HealthcheckInfo {
+                    version_info: VersionInfo {
+                        required: "1.0.0".to_string(),
+                        current: "1.0.0".to_string(),
+                        mismatch: false,
+                    },
+                    update_validation_status: UpdateValidationStatus {
+                        status: "valid".to_string(),
+                    },
+                    network_rollback_occurred: true,
+                }),
+                ..Default::default()
+            };
+
+            let _ = app.update(Event::Device(DeviceEvent::AckRollback), &mut model);
+
+            if let Some(healthcheck) = &model.healthcheck {
+                assert!(!healthcheck.network_rollback_occurred);
+            }
+        }
+
+        #[test]
+        fn handles_missing_healthcheck_gracefully() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                healthcheck: None,
+                ..Default::default()
+            };
+
+            let _ = app.update(Event::Device(DeviceEvent::AckRollback), &mut model);
+
+            assert!(model.healthcheck.is_none());
+        }
+
+        #[test]
+        fn ack_rollback_response_stops_loading() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::AckRollbackResponse(Ok(()))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+        }
+
+        #[test]
+        fn ack_rollback_response_error_sets_error_message() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                is_loading: true,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::AckRollbackResponse(Err(
+                    "Failed to acknowledge rollback".to_string(),
+                ))),
+                &mut model,
+            );
+
+            assert!(!model.is_loading);
+            assert!(model.error_message.is_some());
+        }
+    }
+}

@@ -9,9 +9,6 @@ pub mod update;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
-#[cfg(test)]
-mod tests;
-
 use crux_core::Command;
 
 // Using deprecated Capabilities API for Http (kept for Effect enum generation)

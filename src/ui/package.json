@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "vite",
 		"build": "vite build --base=/static",
+		"build-preview": "vite build",
 		"build-dev": "vite build --base=/static --outDir=../static/ --emptyOutDir",
 		"tsc": "vue-tsc -b",
 		"preview": "vite preview",

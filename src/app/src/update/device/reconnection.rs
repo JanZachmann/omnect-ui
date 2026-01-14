@@ -180,3 +180,638 @@ pub fn handle_healthcheck_response(
 
     crux_core::render::render()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::events::{DeviceEvent, Event};
+    use crate::model::Model;
+    use crate::types::{
+        DeviceOperationState, HealthcheckInfo, NetworkChangeState, UpdateValidationStatus,
+        VersionInfo,
+    };
+    use crate::App;
+    use crux_core::testing::AppTester;
+
+    fn create_healthcheck(status: &str, mismatch: bool) -> HealthcheckInfo {
+        HealthcheckInfo {
+            version_info: VersionInfo {
+                required: "1.0.0".to_string(),
+                current: if mismatch { "0.9.0" } else { "1.0.0" }.to_string(),
+                mismatch,
+            },
+            update_validation_status: UpdateValidationStatus {
+                status: status.to_string(),
+            },
+            network_rollback_occurred: false,
+        }
+    }
+
+    mod reconnection_check_tick {
+        use super::*;
+
+        #[test]
+        fn increments_attempt_counter_when_rebooting() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                device_operation_state: DeviceOperationState::Rebooting,
+                reconnection_attempt: 0,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::ReconnectionCheckTick),
+                &mut model,
+            );
+
+            assert_eq!(model.reconnection_attempt, 1);
+        }
+
+        #[test]
+        fn increments_attempt_counter_when_factory_resetting() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                device_operation_state: DeviceOperationState::FactoryResetting,
+                reconnection_attempt: 5,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::ReconnectionCheckTick),
+                &mut model,
+            );
+
+            assert_eq!(model.reconnection_attempt, 6);
+        }
+
+        #[test]
+        fn increments_attempt_counter_when_updating() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                device_operation_state: DeviceOperationState::Updating,
+                reconnection_attempt: 0,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::ReconnectionCheckTick),
+                &mut model,
+            );
+
+            assert_eq!(model.reconnection_attempt, 1);
+        }
+
+        #[test]
+        fn does_not_increment_when_idle() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                device_operation_state: DeviceOperationState::Idle,
+                reconnection_attempt: 0,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::ReconnectionCheckTick),
+                &mut model,
+            );
+
+            assert_eq!(model.reconnection_attempt, 0);
+        }
+    }
+
+    mod reconnection_timeout {
+        use super::*;
+
+        #[test]
+        fn transitions_reboot_to_failed_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                device_operation_state: DeviceOperationState::Rebooting,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::ReconnectionTimeout),
+                &mut model,
+            );
+
+            assert!(matches!(
+                model.device_operation_state,
+                DeviceOperationState::ReconnectionFailed { .. }
+            ));
+            if let DeviceOperationState::ReconnectionFailed { operation, reason } =
+                model.device_operation_state
+            {
+                assert_eq!(operation, "Reboot");
+                assert!(reason.contains("5 minutes"));
+            }
+            assert!(model.overlay_spinner.timed_out());
+        }
+
+        #[test]
+        fn transitions_factory_reset_to_failed_with_longer_timeout() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                device_operation_state: DeviceOperationState::FactoryResetting,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::ReconnectionTimeout),
+                &mut model,
+            );
+
+            assert!(matches!(
+                model.device_operation_state,
+                DeviceOperationState::ReconnectionFailed { .. }
+            ));
+            if let DeviceOperationState::ReconnectionFailed { operation, reason } =
+                model.device_operation_state
+            {
+                assert_eq!(operation, "Factory Reset");
+                assert!(reason.contains("10 minutes"));
+            }
+        }
+
+        #[test]
+        fn transitions_update_to_failed_state() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                device_operation_state: DeviceOperationState::Updating,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::ReconnectionTimeout),
+                &mut model,
+            );
+
+            assert!(matches!(
+                model.device_operation_state,
+                DeviceOperationState::ReconnectionFailed { .. }
+            ));
+            if let DeviceOperationState::ReconnectionFailed { operation, .. } =
+                model.device_operation_state
+            {
+                assert_eq!(operation, "Update");
+            }
+        }
+
+        #[test]
+        fn does_nothing_when_idle() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                device_operation_state: DeviceOperationState::Idle,
+                ..Default::default()
+            };
+
+            let _ = app.update(
+                Event::Device(DeviceEvent::ReconnectionTimeout),
+                &mut model,
+            );
+
+            assert_eq!(model.device_operation_state, DeviceOperationState::Idle);
+        }
+    }
+
+    mod healthcheck_response {
+        use super::*;
+
+        mod reboot {
+            use super::*;
+
+            #[test]
+            fn error_marks_device_offline_and_transitions_to_waiting() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::Rebooting,
+                    device_went_offline: false,
+                    reconnection_attempt: 2,
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Err(
+                        "Connection failed".to_string(),
+                    ))),
+                    &mut model,
+                );
+
+                assert!(model.device_went_offline);
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::WaitingReconnection { .. }
+                ));
+                if let DeviceOperationState::WaitingReconnection { operation, attempt } =
+                    model.device_operation_state
+                {
+                    assert_eq!(operation, "Reboot");
+                    assert_eq!(attempt, 2);
+                }
+            }
+
+            #[test]
+            fn success_after_offline_transitions_to_successful() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::Rebooting,
+                    device_went_offline: true,
+                    is_authenticated: true,
+                    auth_token: Some("test_token".to_string()),
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Ok(create_healthcheck(
+                        "valid", false,
+                    )))),
+                    &mut model,
+                );
+
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::ReconnectionSuccessful { .. }
+                ));
+                assert!(!model.is_authenticated);
+                assert_eq!(model.auth_token, None);
+                assert!(!model.overlay_spinner.is_visible());
+            }
+
+            #[test]
+            fn success_without_offline_keeps_checking() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::Rebooting,
+                    device_went_offline: false,
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Ok(create_healthcheck(
+                        "valid", false,
+                    )))),
+                    &mut model,
+                );
+
+                assert_eq!(model.device_operation_state, DeviceOperationState::Rebooting);
+            }
+        }
+
+        mod factory_reset {
+            use super::*;
+
+            #[test]
+            fn error_marks_device_offline() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::FactoryResetting,
+                    device_went_offline: false,
+                    reconnection_attempt: 3,
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Err(
+                        "Connection failed".to_string(),
+                    ))),
+                    &mut model,
+                );
+
+                assert!(model.device_went_offline);
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::WaitingReconnection { .. }
+                ));
+            }
+
+            #[test]
+            fn success_after_offline_transitions_to_successful() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::FactoryResetting,
+                    device_went_offline: true,
+                    is_authenticated: true,
+                    auth_token: Some("test_token".to_string()),
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Ok(create_healthcheck(
+                        "valid", false,
+                    )))),
+                    &mut model,
+                );
+
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::ReconnectionSuccessful { .. }
+                ));
+                if let DeviceOperationState::ReconnectionSuccessful { operation } =
+                    model.device_operation_state
+                {
+                    assert_eq!(operation, "Factory Reset");
+                }
+                assert!(!model.is_authenticated);
+            }
+        }
+
+        mod update {
+            use super::*;
+
+            #[test]
+            fn error_marks_device_offline() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::Updating,
+                    device_went_offline: false,
+                    reconnection_attempt: 1,
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Err(
+                        "Connection failed".to_string(),
+                    ))),
+                    &mut model,
+                );
+
+                assert!(model.device_went_offline);
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::WaitingReconnection { .. }
+                ));
+            }
+
+            #[test]
+            fn success_with_succeeded_status_after_offline_completes() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::Updating,
+                    device_went_offline: true,
+                    is_authenticated: true,
+                    auth_token: Some("test_token".to_string()),
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Ok(create_healthcheck(
+                        "Succeeded",
+                        false,
+                    )))),
+                    &mut model,
+                );
+
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::ReconnectionSuccessful { .. }
+                ));
+                assert!(!model.is_authenticated);
+            }
+
+            #[test]
+            fn success_with_recovered_status_after_offline_completes() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::Updating,
+                    device_went_offline: true,
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Ok(create_healthcheck(
+                        "Recovered",
+                        false,
+                    )))),
+                    &mut model,
+                );
+
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::ReconnectionSuccessful { .. }
+                ));
+            }
+
+            #[test]
+            fn success_with_no_update_status_after_offline_completes() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::Updating,
+                    device_went_offline: true,
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Ok(create_healthcheck(
+                        "NoUpdate",
+                        false,
+                    )))),
+                    &mut model,
+                );
+
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::ReconnectionSuccessful { .. }
+                ));
+            }
+
+            #[test]
+            fn success_with_incomplete_status_keeps_checking() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::Updating,
+                    device_went_offline: true,
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Ok(create_healthcheck(
+                        "InProgress",
+                        false,
+                    )))),
+                    &mut model,
+                );
+
+                assert_eq!(model.device_operation_state, DeviceOperationState::Updating);
+            }
+        }
+
+        mod waiting_reconnection {
+            use super::*;
+
+            #[test]
+            fn error_updates_attempt_count() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::WaitingReconnection {
+                        operation: "Reboot".to_string(),
+                        attempt: 5,
+                    },
+                    reconnection_attempt: 10,
+                    device_went_offline: true,
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Err(
+                        "Connection failed".to_string(),
+                    ))),
+                    &mut model,
+                );
+
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::WaitingReconnection { .. }
+                ));
+                if let DeviceOperationState::WaitingReconnection { attempt, .. } =
+                    model.device_operation_state
+                {
+                    assert_eq!(attempt, 10);
+                }
+            }
+
+            #[test]
+            fn success_for_non_update_operation_completes() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::WaitingReconnection {
+                        operation: "Reboot".to_string(),
+                        attempt: 5,
+                    },
+                    device_went_offline: true,
+                    is_authenticated: true,
+                    auth_token: Some("test_token".to_string()),
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Ok(create_healthcheck(
+                        "valid", false,
+                    )))),
+                    &mut model,
+                );
+
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::ReconnectionSuccessful { .. }
+                ));
+                assert!(!model.is_authenticated);
+            }
+
+            #[test]
+            fn success_for_update_with_completed_status() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::WaitingReconnection {
+                        operation: "Update".to_string(),
+                        attempt: 3,
+                    },
+                    device_went_offline: true,
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Ok(create_healthcheck(
+                        "Succeeded",
+                        false,
+                    )))),
+                    &mut model,
+                );
+
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::ReconnectionSuccessful { .. }
+                ));
+            }
+
+            #[test]
+            fn success_for_update_with_incomplete_status_keeps_waiting() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    device_operation_state: DeviceOperationState::WaitingReconnection {
+                        operation: "Update".to_string(),
+                        attempt: 3,
+                    },
+                    device_went_offline: true,
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Ok(create_healthcheck(
+                        "InProgress",
+                        false,
+                    )))),
+                    &mut model,
+                );
+
+                assert!(matches!(
+                    model.device_operation_state,
+                    DeviceOperationState::WaitingReconnection { .. }
+                ));
+            }
+        }
+
+        mod network_change {
+            use super::*;
+
+            #[test]
+            fn successful_healthcheck_transitions_to_reachable() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    network_change_state: NetworkChangeState::WaitingForNewIp {
+                        new_ip: "192.168.1.101".to_string(),
+                        attempt: 5,
+                        rollback_timeout_seconds: 60,
+                        ui_port: 443,
+                        switching_to_dhcp: false,
+                    },
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Ok(create_healthcheck(
+                        "valid", false,
+                    )))),
+                    &mut model,
+                );
+
+                assert!(matches!(
+                    model.network_change_state,
+                    NetworkChangeState::NewIpReachable { .. }
+                ));
+                if let NetworkChangeState::NewIpReachable { new_ip, ui_port } =
+                    model.network_change_state
+                {
+                    assert_eq!(new_ip, "192.168.1.101");
+                    assert_eq!(ui_port, 443);
+                }
+                assert!(model.overlay_spinner.is_visible());
+            }
+
+            #[test]
+            fn failed_healthcheck_keeps_waiting() {
+                let app = AppTester::<App>::default();
+                let mut model = Model {
+                    network_change_state: NetworkChangeState::WaitingForNewIp {
+                        new_ip: "192.168.1.101".to_string(),
+                        attempt: 5,
+                        rollback_timeout_seconds: 60,
+                        ui_port: 443,
+                        switching_to_dhcp: false,
+                    },
+                    ..Default::default()
+                };
+
+                let _ = app.update(
+                    Event::Device(DeviceEvent::HealthcheckResponse(Err(
+                        "Connection failed".to_string(),
+                    ))),
+                    &mut model,
+                );
+
+                assert!(matches!(
+                    model.network_change_state,
+                    NetworkChangeState::WaitingForNewIp { .. }
+                ));
+            }
+        }
+    }
+}

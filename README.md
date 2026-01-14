@@ -174,14 +174,26 @@ Run `./build-and-deploy-image.sh --help` for all available options.
 ### Testing
 
 ```bash
-# Run backend tests
+# Run all unit tests (backend + core)
 cargo test --features mock
 
-# Run Crux Core tests
-cargo test -p omnect-ui-core
+# Run E2E tests (automated setup - starts Centrifugo + frontend dev server)
+./scripts/run-e2e-tests.sh
 
-# Lint
+# Run E2E tests in Docker container (isolated environment)
+./scripts/test-e2e-in-container.sh
+
+# Lint all code
 cargo clippy --all-targets --features mock
+```
+
+#### Troubleshooting E2E Tests
+
+If you encounter permission errors when running E2E tests (typically after running Docker-based tests), clean up files created by root:
+
+```bash
+# Clean all E2E test artifacts with permission issues
+sudo rm -rf temp/certs src/ui/dist src/ui/test-results src/ui/playwright-report
 ```
 
 ### VSCode Integration
