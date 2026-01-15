@@ -4,11 +4,11 @@ use crate::auth_post;
 use crate::events::{DeviceEvent, Event, UiEvent};
 use crate::http_get_silent;
 use crate::model::Model;
-use crate::unauth_post;
 use crate::types::{
     HealthcheckInfo, NetworkChangeState, NetworkConfigRequest, NetworkFormData, NetworkFormState,
     OverlaySpinnerState,
 };
+use crate::unauth_post;
 use crate::Effect;
 
 /// Success message for network configuration update
@@ -62,6 +62,7 @@ pub fn handle_set_network_config(config: String, model: &mut Model) -> Command<E
 fn update_network_state_and_spinner(
     model: &mut Model,
     new_ip: String,
+    old_ip: String,
     ui_port: u16,
     rollback_timeout_seconds: u64,
     switching_to_dhcp: bool,
@@ -74,6 +75,7 @@ fn update_network_state_and_spinner(
     } else {
         model.network_change_state = NetworkChangeState::WaitingForNewIp {
             new_ip,
+            old_ip,
             attempt: 0,
             rollback_timeout_seconds: if rollback_enabled {
                 rollback_timeout_seconds
@@ -127,6 +129,7 @@ pub fn handle_set_network_config_response(
             // Check if we are applying a config that changes IP/DHCP
             if let NetworkChangeState::ApplyingConfig {
                 new_ip,
+                old_ip,
                 switching_to_dhcp,
                 ..
             } = &model.network_change_state.clone()
@@ -135,6 +138,7 @@ pub fn handle_set_network_config_response(
                     update_network_state_and_spinner(
                         model,
                         new_ip.clone(),
+                        old_ip.clone(),
                         response.ui_port,
                         response.rollback_timeout_seconds,
                         *switching_to_dhcp,
@@ -144,6 +148,7 @@ pub fn handle_set_network_config_response(
                     update_network_state_and_spinner(
                         model,
                         new_ip.clone(),
+                        old_ip.clone(),
                         response.ui_port,
                         0,
                         *switching_to_dhcp,
@@ -177,22 +182,41 @@ pub fn handle_set_network_config_response(
 
 /// Handle new IP check tick - polls new IP to see if it's reachable
 pub fn handle_new_ip_check_tick(model: &mut Model) -> Command<Effect, Event> {
-    if let NetworkChangeState::WaitingForNewIp {
-        new_ip,
-        attempt,
-        ui_port,
-        switching_to_dhcp,
-        ..
-    } = &mut model.network_change_state
-    {
-        *attempt += 1;
+    match &mut model.network_change_state {
+        NetworkChangeState::WaitingForNewIp {
+            new_ip,
+            attempt,
+            ui_port,
+            switching_to_dhcp,
+            ..
+        } => {
+            *attempt += 1;
 
-        // If switching to DHCP, we don't know the new IP, so we can't poll it.
-        // We just wait for the timeout (rollback) or for the user to manually navigate.
-        if !*switching_to_dhcp {
-            // Try to reach the new IP (silent GET - no error shown on failure)
-            // Use HTTPS since the server only listens on HTTPS
-            let url = format!("https://{new_ip}:{ui_port}/healthcheck");
+            // If switching to DHCP, we don't know the new IP, so we can't poll it.
+            // We just wait for the timeout (rollback) or for the user to manually navigate.
+            if !*switching_to_dhcp {
+                // Try to reach the new IP (silent GET - no error shown on failure)
+                // Use HTTPS since the server only listens on HTTPS
+                let url = format!("https://{new_ip}:{ui_port}/healthcheck");
+                http_get_silent!(
+                    url,
+                    on_success: Event::Device(DeviceEvent::HealthcheckResponse(Ok(
+                        HealthcheckInfo::default()
+                    ))),
+                    on_error: Event::Ui(UiEvent::ClearSuccess)
+                )
+            } else {
+                crux_core::render::render()
+            }
+        }
+        NetworkChangeState::WaitingForOldIp {
+            old_ip,
+            ui_port,
+            attempt,
+        } => {
+            *attempt += 1;
+            // Poll the old IP to see if rollback completed
+            let url = format!("https://{old_ip}:{ui_port}/healthcheck");
             http_get_silent!(
                 url,
                 on_success: Event::Device(DeviceEvent::HealthcheckResponse(Ok(
@@ -200,35 +224,53 @@ pub fn handle_new_ip_check_tick(model: &mut Model) -> Command<Effect, Event> {
                 ))),
                 on_error: Event::Ui(UiEvent::ClearSuccess)
             )
-        } else {
-            crux_core::render::render()
         }
-    } else {
-        crux_core::render::render()
+        _ => crux_core::render::render(),
     }
 }
 
 /// Handle new IP check timeout - new IP didn't become reachable in time
 pub fn handle_new_ip_check_timeout(model: &mut Model) -> Command<Effect, Event> {
     if let NetworkChangeState::WaitingForNewIp {
-        new_ip, ui_port, ..
+        new_ip,
+        old_ip,
+        ui_port,
+        rollback_timeout_seconds,
+        switching_to_dhcp,
+        ..
     } = &model.network_change_state
     {
-        let new_ip_url = format!("https://{new_ip}:{ui_port}");
-        model.network_change_state = NetworkChangeState::NewIpTimeout {
-            new_ip: new_ip.clone(),
-            ui_port: *ui_port,
-        };
+        // If rollback was enabled (timeout > 0), we assume rollback happened on device
+        if *rollback_timeout_seconds > 0 {
+            model.network_change_state = NetworkChangeState::WaitingForOldIp {
+                old_ip: old_ip.clone(),
+                ui_port: *ui_port,
+                attempt: 0,
+            };
+            model.overlay_spinner.set_text(
+                "Automatic rollback initiated. Verifying connectivity at original address...",
+            );
+            // Ensure spinner is spinning (not timed out state)
+            model.overlay_spinner.set_loading();
+        } else {
+            let new_ip_url = format!("https://{new_ip}:{ui_port}");
+            model.network_change_state = NetworkChangeState::NewIpTimeout {
+                new_ip: new_ip.clone(),
+                old_ip: old_ip.clone(),
+                ui_port: *ui_port,
+                switching_to_dhcp: *switching_to_dhcp,
+            };
 
-        // Update overlay spinner to show timeout with manual link
-        model.overlay_spinner.set_text(
-            format!(
-                "Automatic rollback will occur soon. The network settings were not confirmed at the new address. \
-                 Please navigate to: {new_ip_url}"
-            )
-            .as_str(),
-        );
-        model.overlay_spinner.set_timed_out();
+            // Update overlay spinner to show timeout with manual link
+            model.overlay_spinner.set_text(
+                format!(
+                    "Automatic rollback will occur soon. The network settings were not confirmed at the new address. \
+                     Please navigate to: {new_ip_url}"
+                )
+                .as_str(),
+            );
+            model.overlay_spinner.set_timed_out();
+        }
     }
 
     crux_core::render::render()
@@ -318,8 +360,8 @@ mod tests {
     use crate::model::Model;
     use crate::types::{
         DeviceNetwork, HealthcheckInfo, InternetProtocol, IpAddress, NetworkChangeState,
-        NetworkFormData, NetworkFormState, NetworkStatus, SetNetworkConfigResponse,
-        UpdateValidationStatus, VersionInfo,
+        NetworkFormData, NetworkFormState, NetworkStatus, OverlaySpinnerState,
+        SetNetworkConfigResponse, UpdateValidationStatus, VersionInfo,
     };
     use crate::App;
     use crux_core::testing::AppTester;
@@ -535,12 +577,14 @@ mod tests {
             ));
             if let NetworkChangeState::WaitingForNewIp {
                 new_ip,
+                old_ip,
                 rollback_timeout_seconds,
                 switching_to_dhcp,
                 ..
             } = model.network_change_state
             {
                 assert_eq!(new_ip, "192.168.1.101");
+                assert_eq!(old_ip, "192.168.1.100");
                 assert_eq!(rollback_timeout_seconds, 60);
                 assert!(!switching_to_dhcp);
             }
@@ -579,9 +623,11 @@ mod tests {
             ));
             if let NetworkChangeState::WaitingForNewIp {
                 rollback_timeout_seconds,
+                old_ip,
                 ..
             } = model.network_change_state
             {
+                assert_eq!(old_ip, "192.168.1.100");
                 assert_eq!(rollback_timeout_seconds, 0);
             }
         }
@@ -617,9 +663,12 @@ mod tests {
                 NetworkChangeState::WaitingForNewIp { .. }
             ));
             if let NetworkChangeState::WaitingForNewIp {
-                switching_to_dhcp, ..
+                switching_to_dhcp,
+                old_ip,
+                ..
             } = model.network_change_state
             {
+                assert_eq!(old_ip, "192.168.1.100");
                 assert!(switching_to_dhcp);
             }
         }
@@ -710,7 +759,7 @@ mod tests {
 
             let _ = app.update(
                 Event::Device(DeviceEvent::SetNetworkConfigResponse(Err(
-                    "Network error".to_string(),
+                    "Network error".to_string()
                 ))),
                 &mut model,
             );
@@ -734,6 +783,7 @@ mod tests {
             let mut model = Model {
                 network_change_state: NetworkChangeState::WaitingForNewIp {
                     new_ip: "192.168.1.101".to_string(),
+                    old_ip: "192.168.1.100".to_string(),
                     attempt: 0,
                     rollback_timeout_seconds: 60,
                     ui_port: 443,
@@ -744,8 +794,7 @@ mod tests {
 
             let _ = app.update(Event::Device(DeviceEvent::NewIpCheckTick), &mut model);
 
-            if let NetworkChangeState::WaitingForNewIp { attempt, .. } =
-                model.network_change_state
+            if let NetworkChangeState::WaitingForNewIp { attempt, .. } = model.network_change_state
             {
                 assert_eq!(attempt, 1);
             }
@@ -757,6 +806,7 @@ mod tests {
             let mut model = Model {
                 network_change_state: NetworkChangeState::WaitingForNewIp {
                     new_ip: "".to_string(),
+                    old_ip: "192.168.1.100".to_string(),
                     attempt: 0,
                     rollback_timeout_seconds: 60,
                     ui_port: 443,
@@ -767,38 +817,69 @@ mod tests {
 
             let _ = app.update(Event::Device(DeviceEvent::NewIpCheckTick), &mut model);
 
-            if let NetworkChangeState::WaitingForNewIp { attempt, .. } =
-                model.network_change_state
+            if let NetworkChangeState::WaitingForNewIp { attempt, .. } = model.network_change_state
             {
                 assert_eq!(attempt, 1);
             }
         }
 
         #[test]
-        fn timeout_transitions_to_timeout_state() {
+        fn timeout_transitions_to_waiting_for_old_ip_if_rollback_enabled() {
             let app = AppTester::<App>::default();
             let mut model = Model {
                 network_change_state: NetworkChangeState::WaitingForNewIp {
                     new_ip: "192.168.1.101".to_string(),
+                    old_ip: "192.168.1.100".to_string(),
                     attempt: 10,
                     rollback_timeout_seconds: 60,
+                    ui_port: 443,
+                    switching_to_dhcp: false,
+                },
+                overlay_spinner: OverlaySpinnerState::new("Test Spinner"),
+                ..Default::default()
+            };
+
+            let _ = app.update(Event::Device(DeviceEvent::NewIpCheckTimeout), &mut model);
+
+            assert!(matches!(
+                model.network_change_state,
+                NetworkChangeState::WaitingForOldIp { .. }
+            ));
+            if let NetworkChangeState::WaitingForOldIp {
+                old_ip, ui_port, ..
+            } = model.network_change_state
+            {
+                assert_eq!(old_ip, "192.168.1.100");
+                assert_eq!(ui_port, 443);
+            }
+            assert!(model.overlay_spinner.is_visible());
+            assert!(!model.overlay_spinner.timed_out());
+        }
+
+        #[test]
+        fn timeout_transitions_to_timeout_state_if_rollback_disabled() {
+            let app = AppTester::<App>::default();
+            let mut model = Model {
+                network_change_state: NetworkChangeState::WaitingForNewIp {
+                    new_ip: "192.168.1.101".to_string(),
+                    old_ip: "192.168.1.100".to_string(),
+                    attempt: 10,
+                    rollback_timeout_seconds: 0,
                     ui_port: 443,
                     switching_to_dhcp: false,
                 },
                 ..Default::default()
             };
 
-            let _ = app.update(
-                Event::Device(DeviceEvent::NewIpCheckTimeout),
-                &mut model,
-            );
+            let _ = app.update(Event::Device(DeviceEvent::NewIpCheckTimeout), &mut model);
 
             assert!(matches!(
                 model.network_change_state,
                 NetworkChangeState::NewIpTimeout { .. }
             ));
-            if let NetworkChangeState::NewIpTimeout { new_ip, ui_port } =
-                model.network_change_state
+            if let NetworkChangeState::NewIpTimeout {
+                new_ip, ui_port, ..
+            } = model.network_change_state
             {
                 assert_eq!(new_ip, "192.168.1.101");
                 assert_eq!(ui_port, 443);
@@ -812,6 +893,7 @@ mod tests {
             let mut model = Model {
                 network_change_state: NetworkChangeState::WaitingForNewIp {
                     new_ip: "192.168.1.101".to_string(),
+                    old_ip: "192.168.1.100".to_string(),
                     attempt: 5,
                     rollback_timeout_seconds: 60,
                     ui_port: 443,

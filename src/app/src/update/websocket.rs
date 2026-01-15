@@ -200,7 +200,9 @@ mod tests {
             };
 
             let _ = app.update(
-                Event::WebSocket(WebSocketEvent::UpdateValidationStatusUpdated(status.clone())),
+                Event::WebSocket(WebSocketEvent::UpdateValidationStatusUpdated(
+                    status.clone(),
+                )),
                 &mut model,
             );
 
@@ -218,7 +220,10 @@ mod tests {
             let mut model = Model::default();
 
             let timeouts = Timeouts {
-                wait_online_timeout: Duration { nanos: 0, secs: 300 },
+                wait_online_timeout: Duration {
+                    nanos: 0,
+                    secs: 300,
+                },
             };
 
             let _ = app.update(

@@ -75,8 +75,7 @@ test.describe('Network Settings', () => {
     // Wait for modal to close
     await expect(page.getByText('Confirm Network Configuration Change')).not.toBeVisible();
     
-    // Assert Rollback Overlay appears
-    // The text typically includes "Automatic rollback"
-    await expect(page.locator('#overlay').getByText(/Automatic rollback/i)).toBeVisible({ timeout: 10000 });
+    // Assert Rollback Overlay appears with countdown label
+    await expect(page.locator('#overlay').getByText('Automatic rollback in:')).toBeVisible({ timeout: 10000 });
   });
 });

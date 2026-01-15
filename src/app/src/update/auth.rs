@@ -195,10 +195,7 @@ mod tests {
                 ..Default::default()
             };
 
-            let _ = app.update(
-                Event::Auth(AuthEvent::LogoutResponse(Ok(()))),
-                &mut model,
-            );
+            let _ = app.update(Event::Auth(AuthEvent::LogoutResponse(Ok(()))), &mut model);
 
             assert!(!model.is_authenticated);
             assert!(model.auth_token.is_none());
@@ -282,7 +279,7 @@ mod tests {
 
             let _ = app.update(
                 Event::Auth(AuthEvent::SetPasswordResponse(Err(
-                    "Password too weak".into(),
+                    "Password too weak".into()
                 ))),
                 &mut model,
             );
@@ -376,10 +373,7 @@ mod tests {
             let app = AppTester::<App>::default();
             let mut model = Model::default();
 
-            let _ = app.update(
-                Event::Auth(AuthEvent::CheckRequiresPasswordSet),
-                &mut model,
-            );
+            let _ = app.update(Event::Auth(AuthEvent::CheckRequiresPasswordSet), &mut model);
 
             assert!(model.is_loading);
         }

@@ -48,8 +48,11 @@ const formattedCountdown = computed(() => {
 					</template>
 				</v-progress-circular>
 				<p class="text-h6 m-t-4">{{ props.text }}</p>
-				<div v-if="formattedCountdown" class="text-h5 text-primary font-mono">
-					{{ formattedCountdown }}
+				<div v-if="formattedCountdown" class="flex flex-col items-center gap-2">
+					<div class="text-subtitle-1 text-medium-emphasis">Automatic rollback in:</div>
+					<div class="text-h5 text-primary font-mono">
+						{{ formattedCountdown }}
+					</div>
 				</div>
 				<v-btn v-if="props.redirectUrl && !props.timedOut" color="primary" @click="navigateToRedirectUrl">
 					Open new address in new tab

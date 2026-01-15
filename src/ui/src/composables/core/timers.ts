@@ -191,18 +191,35 @@ export function startNewIpPolling(): void {
 
 	// Get timeout from viewModel (provided by backend)
 	const state = viewModel.network_change_state
-	if (state?.type !== 'waiting_for_new_ip') {
-		console.warn('[useCore] startNewIpPolling called but state is not waiting_for_new_ip:', state)
+	if (!state || (state.type !== 'waiting_for_new_ip' && state.type !== 'waiting_for_old_ip')) {
+		console.warn('[useCore] startNewIpPolling called but state is not waiting_for_new_ip or waiting_for_old_ip:', state)
 		return
 	}
 
-	const rollbackTimeout = state.rollback_timeout_seconds
+	let rollbackTimeout = 0
+	let targetIp = ''
+	let switchingToDhcp = false
+
+	if (state.type === 'waiting_for_new_ip') {
+		// Type casting for properties that exist on specific variants
+		const s = state as any
+		rollbackTimeout = s.rollback_timeout_seconds
+		targetIp = s.new_ip
+		switchingToDhcp = s.switching_to_dhcp
+	} else {
+		// waiting_for_old_ip
+		const s = state as any
+		// No rollback timeout in this state (we are already rolled back)
+		rollbackTimeout = 0
+		targetIp = s.old_ip
+		// We are polling the old IP, so we know it
+		switchingToDhcp = false
+	}
+
 	const timeoutMs = rollbackTimeout * 1000 // Convert seconds to milliseconds
-	const targetIp = state.new_ip
-	// Access the switching_to_dhcp property which is available on the variant
-	const switchingToDhcp = (state as any).switching_to_dhcp
 
 	// Save to localStorage for page refresh resilience
+	// For waiting_for_old_ip, we might not need to save timeout, or save 0
 	saveNetworkChangeState(targetIp, rollbackTimeout)
 
 	// Set countdown deadline
@@ -259,6 +276,8 @@ export function stopNewIpPolling(): void {
 		clearTimeout(newIpTimeoutId)
 		newIpTimeoutId = null
 	}
+	// Clear countdown seconds in viewModel
+	viewModel.overlay_spinner.countdown_seconds = undefined
 	// Clear countdown deadline
 	countdownDeadline = null
 }
@@ -301,17 +320,24 @@ export function initializeTimerWatchers(): void {
 			const newType = newState?.type
 			const oldType = oldState?.type
 
-			// Start polling ONLY when transitioning into waiting_for_new_ip state
-			if (newType === 'waiting_for_new_ip' && oldType !== 'waiting_for_new_ip') {
+			// Start polling when entering polling states
+			const isPollingState = (type: string | undefined) =>
+				type === 'waiting_for_new_ip' || type === 'waiting_for_old_ip'
+
+			if (isPollingState(newType) && !isPollingState(oldType)) {
 				startNewIpPolling()
 			}
-			// Stop polling when leaving waiting_for_new_ip state
-			else if (oldType === 'waiting_for_new_ip' && newType !== 'waiting_for_new_ip') {
+			// Stop polling when leaving polling states
+			else if (isPollingState(oldType) && !isPollingState(newType)) {
 				stopNewIpPolling()
+			}
+			// If switching between polling states (e.g. new_ip -> old_ip), restart to update config/target
+			else if (isPollingState(newType) && isPollingState(oldType) && newType !== oldType) {
+				startNewIpPolling()
 			}
 
 			// Clear localStorage when entering terminal states (success, timeout, or idle)
-			if (newType === 'new_ip_reachable' || newType === 'new_ip_timeout' || newType === 'idle') {
+			if (newType === 'new_ip_reachable' || newType === 'new_ip_timeout' || newType === 'waiting_for_old_ip' || newType === 'idle') {
 				clearNetworkChangeState()
 			}
 

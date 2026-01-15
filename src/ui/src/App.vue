@@ -10,12 +10,16 @@ import OverlaySpinner from "./components/feedback/OverlaySpinner.vue"
 import UserMenu from "./components/UserMenu.vue"
 import { useCore } from "./composables/useCore"
 import { useSnackbar } from "./composables/useSnackbar"
+import { useMessageWatchers } from "./composables/useMessageWatchers"
 import type { HealthcheckResponse } from "./types"
 
 axios.defaults.validateStatus = (_) => true
 
 const { snackbarState } = useSnackbar()
 const { viewModel, ackRollback, subscribeToChannels, unsubscribeFromChannels } = useCore()
+
+// Enable automatic message watchers
+useMessageWatchers()
 
 const { lgAndUp } = useDisplay()
 const router = useRouter()

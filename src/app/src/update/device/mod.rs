@@ -212,7 +212,10 @@ mod tests {
             );
 
             assert!(!model.is_loading);
-            assert_eq!(model.device_operation_state, DeviceOperationState::Rebooting);
+            assert_eq!(
+                model.device_operation_state,
+                DeviceOperationState::Rebooting
+            );
             assert_eq!(model.success_message, Some("Reboot initiated".into()));
             assert!(model.overlay_spinner.is_visible());
         }
@@ -231,7 +234,10 @@ mod tests {
             );
 
             assert!(!model.is_loading);
-            assert_eq!(model.device_operation_state, DeviceOperationState::Rebooting);
+            assert_eq!(
+                model.device_operation_state,
+                DeviceOperationState::Rebooting
+            );
             assert_eq!(
                 model.success_message,
                 Some("Reboot initiated (connection lost)".into())
@@ -450,7 +456,9 @@ mod tests {
             };
 
             let _ = app.update(
-                Event::Device(DeviceEvent::LoadUpdateResponse(Err("File not found".into()))),
+                Event::Device(DeviceEvent::LoadUpdateResponse(
+                    Err("File not found".into()),
+                )),
                 &mut model,
             );
 

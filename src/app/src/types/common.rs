@@ -97,6 +97,12 @@ impl OverlaySpinnerState {
         self.timed_out = true;
     }
 
+    /// Reset timed out state (back to loading/spinning)
+    pub fn set_loading(&mut self) {
+        self.timed_out = false;
+        self.countdown_seconds = None;
+    }
+
     /// Show the overlay spinner
     pub fn show(&mut self) {
         self.overlay = true;

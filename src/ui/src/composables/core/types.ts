@@ -39,6 +39,7 @@ import {
 	NetworkChangeStateVariantwaiting_for_new_ip,
 	NetworkChangeStateVariantnew_ip_reachable,
 	NetworkChangeStateVariantnew_ip_timeout,
+	NetworkChangeStateVariantwaiting_for_old_ip,
 	NetworkFormState,
 	NetworkFormStateVariantidle,
 	NetworkFormStateVariantediting,
@@ -80,10 +81,11 @@ export type DeviceOperationStateType =
 
 export type NetworkChangeStateType =
 	| { type: 'idle' }
-	| { type: 'applying_config'; is_server_addr: boolean; ip_changed: boolean; new_ip: string; old_ip: string }
-	| { type: 'waiting_for_new_ip'; new_ip: string; attempt: number; ui_port: number; rollback_timeout_seconds: number }
+	| { type: 'applying_config'; is_server_addr: boolean; ip_changed: boolean; new_ip: string; old_ip: string; switching_to_dhcp: boolean }
+	| { type: 'waiting_for_new_ip'; new_ip: string; old_ip: string; attempt: number; ui_port: number; rollback_timeout_seconds: number; switching_to_dhcp: boolean }
 	| { type: 'new_ip_reachable'; new_ip: string; ui_port: number }
-	| { type: 'new_ip_timeout'; new_ip: string; ui_port: number }
+	| { type: 'new_ip_timeout'; new_ip: string; old_ip: string; ui_port: number; switching_to_dhcp: boolean }
+	| { type: 'waiting_for_old_ip'; old_ip: string; ui_port: number; attempt: number }
 
 export type NetworkFormStateType =
 	| { type: 'idle' }
@@ -268,16 +270,39 @@ export function convertNetworkChangeState(state: NetworkChangeState): NetworkCha
 			ip_changed: state.ip_changed,
 			new_ip: state.new_ip,
 			old_ip: state.old_ip,
+			switching_to_dhcp: state.switching_to_dhcp,
 		}
 	}
 	if (state instanceof NetworkChangeStateVariantwaiting_for_new_ip) {
-		return { type: 'waiting_for_new_ip', new_ip: state.new_ip, attempt: state.attempt, ui_port: state.ui_port, rollback_timeout_seconds: Number(state.rollback_timeout_seconds) }
+		return {
+			type: 'waiting_for_new_ip',
+			new_ip: state.new_ip,
+			old_ip: state.old_ip,
+			attempt: state.attempt,
+			ui_port: state.ui_port,
+			rollback_timeout_seconds: Number(state.rollback_timeout_seconds),
+			switching_to_dhcp: state.switching_to_dhcp,
+		}
 	}
 	if (state instanceof NetworkChangeStateVariantnew_ip_reachable) {
 		return { type: 'new_ip_reachable', new_ip: state.new_ip, ui_port: state.ui_port }
 	}
 	if (state instanceof NetworkChangeStateVariantnew_ip_timeout) {
-		return { type: 'new_ip_timeout', new_ip: state.new_ip, ui_port: state.ui_port }
+		return {
+			type: 'new_ip_timeout',
+			new_ip: state.new_ip,
+			old_ip: state.old_ip,
+			ui_port: state.ui_port,
+			switching_to_dhcp: state.switching_to_dhcp,
+		}
+	}
+	if (state instanceof NetworkChangeStateVariantwaiting_for_old_ip) {
+		return {
+			type: 'waiting_for_old_ip',
+			old_ip: state.old_ip,
+			ui_port: state.ui_port,
+			attempt: state.attempt,
+		}
 	}
 	return { type: 'idle' }
 }

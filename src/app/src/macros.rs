@@ -82,9 +82,9 @@ macro_rules! unauth_post {
                 .build()
                 .then_send(|result| {
                     let event_result = $crate::process_status_response($action, result);
-                    $crate::events::Event::$domain(
-                        $crate::events::$domain_event::$response_event(event_result),
-                    )
+                    $crate::events::Event::$domain($crate::events::$domain_event::$response_event(
+                        event_result,
+                    ))
                 }),
         ]);
         cmd

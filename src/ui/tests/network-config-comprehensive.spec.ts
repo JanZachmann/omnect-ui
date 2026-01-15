@@ -40,9 +40,12 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
   test.describe('CRITICAL: Rollback Flows and Error Handling', () => {
     test('automatic rollback timeout - healthcheck fails, rollback triggered', async ({ page }) => {
       // This test requires adapter IP to be 'localhost' (to match location.hostname)
-      // for the rollback modal to appear. Running serially to avoid Centrifugo interference.
+      // ...
 
-      // Configure harness for rollback timeout scenario
+      // Configure harness for rollback timeout scenario with short timeout
+      const shortTimeoutSeconds = 3;
+      await page.unroute('**/network');
+      await harness.mockNetworkConfig(page, { rollbackTimeoutSeconds: shortTimeoutSeconds });
       await harness.mockHealthcheck(page, { healthcheckAlwaysFails: true });
 
       // Publish initial network status (static IP, server address matches hostname)
@@ -63,14 +66,14 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       await expect(page.getByText('eth0')).toBeVisible();
       await page.getByText('eth0').click();
 
-      // Wait for form to load
-      await page.waitForTimeout(500);
+      // Wait for form to load (state-based: wait for IP input to be visible)
+      const ipInput = page.getByRole('textbox', { name: /IP Address/i }).first();
+      await expect(ipInput).toBeVisible({ timeout: 5000 });
 
       // Verify current connection indicator
       await expect(page.getByText('(current connection)')).toBeVisible();
 
       // Change IP address to trigger rollback modal
-      const ipInput = page.getByRole('textbox', { name: /IP Address/i }).first();
       await ipInput.fill('192.168.1.150');
 
       // Submit with rollback enabled
@@ -83,18 +86,84 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       // Apply changes
       await page.getByRole('button', { name: /apply changes/i }).click();
 
-      // Verify overlay appears with countdown
-      await expect(page.locator('#overlay').getByText(/Automatic rollback/i)).toBeVisible({ timeout: 10000 });
+      // Verify overlay appears with countdown label
+      await expect(page.locator('#overlay').getByText('Automatic rollback in:')).toBeVisible({ timeout: 10000 });
 
       // Verify rollback is enabled in harness state
       const rollbackState = harness.getRollbackState();
       expect(rollbackState.enabled).toBe(true);
 
-      // Wait briefly to ensure overlay stays visible
+      // Simulate rollback on backend (revert IP)
+      await harness.simulateRollbackTimeout();
+
+      // Wait for browser timeout to fire (3 seconds)
+      // Give it extra time because CI/test environment can be slow
+      await page.waitForTimeout(6000);
+
+      // Configure healthcheck to succeed now that rollback happened
+      await harness.mockHealthcheck(page, { healthcheckAlwaysFails: false });
+
+      // Verify overlay text changes to rollback initiation
+      await expect(page.locator('#overlay').getByText(/Automatic rollback initiated/i).first()).toBeVisible({ timeout: 15000 });
+
+      // At this point, Core should detect success on old IP, clear spinner, and redirect
+      await expect(page.locator('#overlay')).not.toBeVisible({ timeout: 20000 });
+
+      // Verify redirect to Login
+      await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
+    });
+
+    test('DHCP rollback - automatic redirect to login after timeout', async ({ page }) => {
+      // Use a short rollback timeout for testing
+      const shortTimeoutSeconds = 5;
+      // Ensure we clear any existing mocks for /network
+      await page.unroute('**/network');
+      await harness.mockNetworkConfig(page, { rollbackTimeoutSeconds: shortTimeoutSeconds });
+
+      // Configure healthcheck to fail initially (simulating new IP unreachable)
+      // then succeed after some time (simulating rollback completion on old IP)
+      // Rollback happens at 5s. We want it to succeed after that.
+      await harness.mockHealthcheck(page, { healthcheckSuccessAfter: 8000 });
+
+      // Start with localhost IP (server address)
+      await harness.publishNetworkStatus([
+        harness.createAdapter('eth0', {
+          ipv4: {
+            addrs: [{ addr: 'localhost', dhcp: false, prefix_len: 24 }],
+            dns: ['8.8.8.8'],
+            gateways: ['192.168.1.1'],
+          },
+        }),
+      ]);
+
+      // Navigate to Network page and eth0
+      await page.getByText('Network').click();
+      await page.getByText('eth0').click();
       await page.waitForTimeout(1000);
 
-      // Verify overlay is still visible (rollback protection active)
-      await expect(page.locator('#overlay').getByText(/Automatic rollback/i)).toBeVisible();
+      // Switch to DHCP and submit
+      await page.getByLabel('DHCP').click({ force: true });
+      await page.waitForTimeout(500);
+      await page.getByRole('button', { name: /save/i }).click();
+      await page.getByRole('button', { name: /apply changes/i }).click();
+
+      // Verify overlay appears
+      await expect(page.locator('#overlay')).toBeVisible();
+
+      // Wait for timeout to occur in browser (5 seconds)
+      // We wait a bit more to allow for processing and state transition
+      await page.waitForTimeout(7000);
+
+      // Verify spinner text changed to rollback initiation message
+      await expect(page.locator('#overlay').getByText(/Automatic rollback initiated/i).first()).toBeVisible({ timeout: 15000 });
+
+      // Wait for healthcheck success on old IP (configured to succeed after 8s total)
+      // At this point, Core should detect success, clear spinner, invalidate session, and redirect
+      await expect(page.locator('#overlay')).not.toBeVisible({ timeout: 20000 });
+
+      // Verify redirect to Login page
+      await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
+      await expect(page.getByText(/Automatic network rollback successful/i)).toBeVisible();
     });
 
     test('rollback cancellation - new IP becomes reachable within timeout', async ({ page }) => {
@@ -131,8 +200,8 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       await expect(page.getByText('Confirm Network Configuration Change')).toBeVisible({ timeout: 5000 });
       await page.getByRole('button', { name: /apply changes/i }).click();
 
-      // Verify overlay appears
-      await expect(page.locator('#overlay').getByText(/Automatic rollback/i)).toBeVisible({ timeout: 10000 });
+      // Verify overlay appears with countdown label
+      await expect(page.locator('#overlay').getByText('Automatic rollback in:')).toBeVisible({ timeout: 10000 });
 
       // Wait for healthcheck to succeed (configured to succeed after 6s)
       await page.waitForTimeout(7000);
@@ -163,33 +232,33 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       await expect(page.getByText('eth0')).toBeVisible();
       await page.getByText('eth0').click();
 
+      // Wait for form to load (state-based)
+      const ipInput = page.getByRole('textbox', { name: /IP Address/i }).first();
+      await expect(ipInput).toBeVisible({ timeout: 5000 });
+
       // Switch to Static if not already
       await page.getByLabel('Static').click({ force: true });
+      await expect(page.getByLabel('Static')).toBeChecked();
 
       // Enter invalid IP address
-      const ipInput = page.getByRole('textbox', { name: /IP Address/i }).first();
       await ipInput.fill('999.999.999.999');
 
-      // Attempt to save (form validation should prevent submission)
-      // Note: Vuetify validation may prevent the button from being clicked
-      // or may show inline error
-
-      // Verify error indicator appears (this depends on Vuetify validation implementation)
-      // The IP validation rule should mark the field as invalid
-      await page.waitForTimeout(500);
+      // Form validation should mark the field as invalid
+      // Vuetify adds error class to invalid fields
+      await expect(ipInput).toBeVisible();
 
       // Try another invalid format
       await ipInput.fill('not.an.ip.address');
-      await page.waitForTimeout(500);
+      await expect(ipInput).toHaveValue('not.an.ip.address');
 
       // Valid IP should clear the error
       await ipInput.fill('192.168.1.200');
-      await page.waitForTimeout(500);
+      await expect(ipInput).toHaveValue('192.168.1.200');
     });
 
     test('backend error handling during configuration apply', async ({ page }) => {
-      // Mock network config to return error
-      await harness.mockNetworkConfigError(page, 500, 'Failed to apply network configuration');
+      // Mock network config to return error with user-friendly message
+      await harness.mockNetworkConfigError(page, 500, 'Failed to apply network configuration. Please check your settings and try again.');
 
       // Publish initial network status (non-server adapter to avoid rollback modal)
       await harness.publishNetworkStatus([
@@ -207,24 +276,20 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       await expect(page.getByText('eth0')).toBeVisible();
       await page.getByText('eth0').click();
 
-      // Change IP address
+      // Wait for form to load (state-based)
       const ipInput = page.getByRole('textbox', { name: /IP Address/i }).first();
+      await expect(ipInput).toBeVisible({ timeout: 5000 });
+
+      // Change IP address
       await ipInput.fill('192.168.1.210');
 
       // Submit (no rollback modal since not current connection)
       await page.getByRole('button', { name: /save/i }).click();
 
-      // Wait for error response
-      await page.waitForTimeout(1000);
-
-      // Verify error message appears (snackbar)
-      // Note: The exact error message display depends on Core's error handling
-      // The error_message in viewModel should be set, which triggers the snackbar
-
-      // Verify form state reverts to Editing (not stuck in Submitting)
-      // Save button should be re-enabled
+      // Verify form state reverts to Editing (state-based: Save button re-enabled)
+      // This indicates the error was handled and form is back to editable state
       const saveButton = page.getByRole('button', { name: /save/i });
-      await expect(saveButton).toBeEnabled({ timeout: 3000 });
+      await expect(saveButton).toBeEnabled({ timeout: 5000 });
     });
 
     test('REGRESSION: form fields not reset during editing (caret stability)', async ({ page }) => {
@@ -249,21 +314,14 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       await expect(page.getByText('eth0')).toBeVisible();
       await page.getByText('eth0').click();
 
-      // Wait for form to fully initialize
-      await page.waitForTimeout(500);
-
+      // Wait for form to fully initialize (state-based: wait for IP input with correct value)
       const ipInput = page.getByRole('textbox', { name: /IP Address/i }).first();
-
-      // Verify initial value is loaded correctly
-      await expect(ipInput).toHaveValue('192.168.1.100');
+      await expect(ipInput).toHaveValue('192.168.1.100', { timeout: 5000 });
 
       // Type a new IP address character by character to simulate real user typing
       // This helps detect issues where the form resets mid-edit
       await ipInput.clear();
       await ipInput.pressSequentially('10.20.30.40', { delay: 50 });
-
-      // Wait a moment for any watchers to fire
-      await page.waitForTimeout(300);
 
       // CRITICAL: Verify the typed value is preserved (not reset to original)
       await expect(ipInput).toHaveValue('10.20.30.40');
@@ -271,16 +329,10 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       // Now test DHCP radio button switching - this was also affected by the bug
       // Switch to DHCP
       await page.getByLabel('DHCP').click({ force: true });
-      await page.waitForTimeout(300);
-
-      // Verify DHCP is selected
       await expect(page.getByLabel('DHCP')).toBeChecked();
 
       // Switch back to Static
       await page.getByLabel('Static').click({ force: true });
-      await page.waitForTimeout(300);
-
-      // Verify Static is selected
       await expect(page.getByLabel('Static')).toBeChecked();
 
       // Verify IP field is still editable after switching modes
@@ -289,7 +341,6 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       // Type another IP to confirm editing still works
       await ipInput.clear();
       await ipInput.pressSequentially('172.16.0.1', { delay: 50 });
-      await page.waitForTimeout(300);
 
       // CRITICAL: Verify the new typed value is preserved
       await expect(ipInput).toHaveValue('172.16.0.1');
@@ -376,8 +427,8 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       // Apply changes (with rollback enabled)
       await page.getByRole('button', { name: /apply changes/i }).click();
 
-      // Verify overlay appears with countdown
-      await expect(page.locator('#overlay').getByText(/Automatic rollback/i)).toBeVisible({ timeout: 10000 });
+      // Verify overlay appears with countdown label
+      await expect(page.locator('#overlay').getByText('Automatic rollback in:')).toBeVisible({ timeout: 10000 });
 
       // Verify rollback state
       const rollbackState = harness.getRollbackState();

@@ -117,13 +117,14 @@ fi
 
 # Start Vite preview server (serves production build)
 echo "🚀 Starting Vite preview server..."
+export VITE_HTTPS=true
 bun run preview --port 5173 > /tmp/vite.log 2>&1 &
 FRONTEND_PID=$!
 
 # Wait for preview server
 echo "⏳ Waiting for preview server..."
 for i in {1..30}; do
-    if curl -s http://localhost:5173 > /dev/null; then
+    if curl -k -s https://localhost:5173 > /dev/null; then
         echo "✅ Preview server is ready!"
         break
     fi
@@ -154,10 +155,10 @@ echo "📦 Ensuring Playwright browsers are installed..."
 npx playwright install chromium
 
 # BASE_URL is set for playwright.config.ts
-export BASE_URL="http://localhost:5173"
+export BASE_URL="https://localhost:5173"
 
 # Run tests
-npx playwright test "$@"
+npx playwright test --reporter=list "$@"
 
 TEST_EXIT_CODE=$?
 

@@ -68,7 +68,7 @@ The confirmation dialog appears when you:
 3. If enabled:
    - **For static IP changes**: You have 90 seconds to access the device at the new IP address. An overlay with a countdown timer will guide you to the new address. You must log in at the new IP address to confirm the change works.
    - **For DHCP changes**: You have 90 seconds to find and access the new DHCP-assigned IP (check your DHCP server or device console). The overlay will show a countdown.
-   - If you don't access the new address and log in within 90 seconds, the device automatically restores the previous network configuration
+   - If you don't access the new address and log in within 90 seconds, the device automatically restores the previous network configuration. The browser will attempt to reconnect to the original address.
 4. If disabled:
    - Changes are applied immediately without automatic rollback protection
    - **For static IP changes**: An overlay appears with a button to navigate to the new IP address

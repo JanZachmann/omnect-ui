@@ -159,23 +159,35 @@ pub fn handle_healthcheck_response(
     }
 
     // Handle network change state machine for IP change polling
-    if let NetworkChangeState::WaitingForNewIp {
-        new_ip, ui_port, ..
-    } = &model.network_change_state
-    {
-        if result.is_ok() {
-            // Clone values before reassigning state to avoid borrow conflict
-            let new_ip = new_ip.clone();
-            let port = *ui_port;
-            // New IP is reachable
-            model.network_change_state = NetworkChangeState::NewIpReachable {
-                new_ip: new_ip.clone(),
-                ui_port: port,
-            };
-            // Update overlay for redirect
-            model.overlay_spinner = OverlaySpinnerState::new("Network settings applied")
-                .with_text(format!("Redirecting to new IP: {new_ip}:{port}"));
+    match &model.network_change_state {
+        NetworkChangeState::WaitingForNewIp {
+            new_ip, ui_port, ..
+        } => {
+            if result.is_ok() {
+                // Clone values before reassigning state to avoid borrow conflict
+                let new_ip = new_ip.clone();
+                let port = *ui_port;
+                // New IP is reachable
+                model.network_change_state = NetworkChangeState::NewIpReachable {
+                    new_ip: new_ip.clone(),
+                    ui_port: port,
+                };
+                // Update overlay for redirect
+                model.overlay_spinner = OverlaySpinnerState::new("Network settings applied")
+                    .with_text(format!("Redirecting to new IP: {new_ip}:{port}"));
+            }
         }
+        NetworkChangeState::WaitingForOldIp { .. } => {
+            if result.is_ok() {
+                // Old IP is reachable - Rollback successful
+                model.network_change_state = NetworkChangeState::Idle;
+                model.overlay_spinner.clear();
+                model.invalidate_session();
+                model.success_message =
+                    Some("Automatic network rollback successful. Please log in.".to_string());
+            }
+        }
+        _ => {}
     }
 
     crux_core::render::render()
@@ -758,6 +770,7 @@ mod tests {
                 let mut model = Model {
                     network_change_state: NetworkChangeState::WaitingForNewIp {
                         new_ip: "192.168.1.101".to_string(),
+                        old_ip: "192.168.1.100".to_string(),
                         attempt: 5,
                         rollback_timeout_seconds: 60,
                         ui_port: 443,
@@ -792,6 +805,7 @@ mod tests {
                 let mut model = Model {
                     network_change_state: NetworkChangeState::WaitingForNewIp {
                         new_ip: "192.168.1.101".to_string(),
+                        old_ip: "192.168.1.100".to_string(),
                         attempt: 5,
                         rollback_timeout_seconds: 60,
                         ui_port: 443,

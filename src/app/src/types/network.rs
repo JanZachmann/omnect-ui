@@ -145,12 +145,76 @@ impl NetworkFormState {
     }
 }
 
-/// State of network IP change after configuration
+/// State machine for network IP change after configuration.
+///
+/// This state machine tracks the progress of network configuration changes
+/// that affect the device's IP address, including automatic rollback handling.
+///
+/// # State Machine Diagram
+///
+/// ```text
+///                              ┌─────────────────────────────────────────────────────────┐
+///                              │                     START                                │
+///                              └────────────────────────┬────────────────────────────────┘
+///                                                       │
+///                                                       ▼
+///                                              ┌────────────────┐
+///                              ┌───────────────│      Idle      │───────────────┐
+///                              │               └────────────────┘               │
+///                              │                       │                        │
+///                              │     User applies      │                        │
+///                              │    network config     │                        │
+///                              │                       ▼                        │
+///                              │              ┌────────────────┐                │
+///                              │              │ ApplyingConfig │                │
+///                              │              └────────────────┘                │
+///                              │                       │                        │
+///                              │   Backend responds    │                        │
+///                              │    successfully       │                        │
+///                              │                       ▼                        │
+///                              │             ┌─────────────────┐                │
+///                              │             │ WaitingForNewIp │                │
+///                              │             └─────────────────┘                │
+///                              │              │               │                 │
+///                              │   Healthcheck│               │Timeout expires  │
+///                              │    succeeds  │               │(rollback enabled)│
+///                              │              ▼               ▼                 │
+///                              │   ┌────────────────┐  ┌─────────────────┐      │
+///                              │   │ NewIpReachable │  │ WaitingForOldIp │      │
+///                              │   └────────────────┘  └─────────────────┘      │
+///                              │          │                    │                │
+///                              │   Redirect to │    Healthcheck │                │
+///                              │     new IP    │    on old IP   │                │
+///                              │          │    │    succeeds    │                │
+///                              │          │    │       │        │                │
+///                              │          ▼    │       ▼        │                │
+///                              │   ┌───────────┴───────────┐    │                │
+///                              └───│        SUCCESS        │◄───┘                │
+///                                  └───────────────────────┘                     │
+///                                                                                │
+///                              ┌─────────────────────────────────────────────────┘
+///                              │ Timeout expires (rollback disabled)
+///                              ▼
+///                     ┌────────────────┐
+///                     │ NewIpTimeout   │  (Shows manual navigation message)
+///                     └────────────────┘
+/// ```
+///
+/// # State Descriptions
+///
+/// - **Idle**: No network change in progress
+/// - **ApplyingConfig**: Configuration request sent to backend, waiting for response
+/// - **WaitingForNewIp**: Polling new IP to verify reachability before rollback timeout
+/// - **NewIpReachable**: New IP confirmed reachable, will redirect browser
+/// - **NewIpTimeout**: Timeout expired without rollback enabled, show manual nav message
+/// - **WaitingForOldIp**: Rollback assumed, now polling old IP to verify device is back
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum NetworkChangeState {
+    /// No network change in progress
     #[default]
     Idle,
+    /// Configuration request sent to backend, waiting for response
     ApplyingConfig {
         is_server_addr: bool,
         ip_changed: bool,
@@ -158,20 +222,32 @@ pub enum NetworkChangeState {
         old_ip: String,
         switching_to_dhcp: bool,
     },
+    /// Polling new IP to verify reachability before rollback timeout
     WaitingForNewIp {
         new_ip: String,
+        old_ip: String,
         attempt: u32,
         rollback_timeout_seconds: u64,
         ui_port: u16,
         switching_to_dhcp: bool,
     },
+    /// New IP confirmed reachable, browser will redirect
     NewIpReachable {
         new_ip: String,
         ui_port: u16,
     },
+    /// Timeout expired without confirming new IP (rollback disabled case)
     NewIpTimeout {
         new_ip: String,
+        old_ip: String,
         ui_port: u16,
+        switching_to_dhcp: bool,
+    },
+    /// Rollback assumed complete, polling old IP to verify device is accessible
+    WaitingForOldIp {
+        old_ip: String,
+        ui_port: u16,
+        attempt: u32,
     },
 }
 
