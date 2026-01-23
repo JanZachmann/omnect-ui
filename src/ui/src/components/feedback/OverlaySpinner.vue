@@ -54,7 +54,7 @@ const formattedCountdown = computed(() => {
 						{{ formattedCountdown }}
 					</div>
 				</div>
-				<v-btn v-if="props.redirectUrl && !props.timedOut" color="primary" @click="navigateToRedirectUrl">
+				<v-btn v-if="props.redirectUrl" color="primary" @click="navigateToRedirectUrl">
 					Open new address in new tab
 				</v-btn>
 				<v-btn v-if="props.timedOut" text="Refresh" @click="refresh" />

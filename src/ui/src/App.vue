@@ -35,9 +35,16 @@ const overlaySpinnerState = computed(() => viewModel.overlay_spinner)
 // Build redirect URL from network_change_state when waiting for new IP
 const redirectUrl = computed(() => {
 	const state = viewModel.network_change_state
-	if (state.type === 'waiting_for_new_ip' && 'new_ip' in state && 'ui_port' in state) {
-		return `https://${(state as any).new_ip}:${(state as any).ui_port}`
+
+	// Show button for both waiting and timeout states (but NOT for DHCP or rollback verification)
+	if ((state.type === 'waiting_for_new_ip' || state.type === 'new_ip_timeout')
+		&& 'new_ip' in state
+		&& 'ui_port' in state
+		&& !('switching_to_dhcp' in state && state.switching_to_dhcp)) {
+		return `https://${state.new_ip}:${state.ui_port}`
 	}
+
+	// Don't show for waiting_for_old_ip - rollback in progress
 	return undefined
 })
 

@@ -69,7 +69,7 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       // We use abort() to simulate a network error because the app masks 503 responses as 200
       await page.route('**/*192.168.1.150*/healthcheck', route => route.abort());
 
-      await expect(page.locator('#overlay').getByText(/Automatic rollback initiated/i).first()).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('#overlay').getByText(/Rollback in progress/i).first()).toBeVisible({ timeout: 15000 });
       await expect(page.locator('#overlay')).not.toBeVisible({ timeout: 20000 });
       await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
     });
@@ -104,7 +104,7 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       await page.waitForTimeout(4000);
 
       // Verify rollback message matches
-      await expect(page.locator('#overlay').getByText(/Automatic rollback initiated/i).first()).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('#overlay').getByText(/Rollback in progress/i).first()).toBeVisible({ timeout: 15000 });
 
       // Now allow recovery
       await harness.mockHealthcheck(page, { healthcheckAlwaysFails: false });
@@ -235,6 +235,109 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
       await expect(ipInput).not.toBeEditable();
 
       await harness.saveAndVerify(page);
+    });
+
+    test('button remains visible when rollback disabled (no timeout occurs)', async ({ page }) => {
+      // Setup current adapter with static IP
+      await harness.setup(page, {
+        ipv4: {
+          addrs: [{ addr: 'localhost', dhcp: false, prefix_len: 24 }],
+          dns: ['8.8.8.8'],
+          gateways: ['192.168.1.1'],
+        },
+      });
+
+      await expect(page.getByText('(current connection)')).toBeVisible();
+
+      // Change IP address
+      const ipInput = page.getByRole('textbox', { name: /IP Address/i }).first();
+      await ipInput.fill('192.168.1.150');
+      await page.getByRole('button', { name: /save/i }).click();
+
+      // Open modal and DISABLE rollback
+      await expect(page.getByText('Confirm Network Configuration Change')).toBeVisible();
+      await page.getByRole('checkbox', { name: /Enable automatic rollback/i }).uncheck();
+      await page.getByRole('button', { name: /apply changes/i }).click();
+
+      // Verify overlay appears
+      await expect(page.locator('#overlay')).toBeVisible({ timeout: 10000 });
+
+      // Verify button is shown (IP is known, not DHCP)
+      await expect(page.getByRole('button', { name: /Open new address in new tab/i })).toBeVisible();
+
+      // Simulate unreachable new IP (polling continues indefinitely - no timeout when rollback disabled)
+      await page.route('**/*192.168.1.150*/healthcheck', route => route.abort());
+      await page.waitForTimeout(3000); // Wait a bit
+
+      // CRITICAL: Button remains visible (stays in waiting_for_new_ip state, no timeout)
+      await expect(page.getByRole('button', { name: /Open new address in new tab/i })).toBeVisible();
+
+      // Verify text for no-rollback scenario
+      await expect(page.locator('#overlay').getByText(/Network configuration applied/i)).toBeVisible();
+    });
+
+    test('button hidden when switching to DHCP (IP unknown)', async ({ page }) => {
+      await harness.setup(page, {
+        ipv4: {
+          addrs: [{ addr: 'localhost', dhcp: false, prefix_len: 24 }],
+          dns: ['8.8.8.8'],
+          gateways: ['192.168.1.1'],
+        },
+      });
+
+      await expect(page.getByText('(current connection)')).toBeVisible();
+
+      // Switch to DHCP
+      await page.getByLabel('DHCP').click({ force: true });
+      await page.waitForTimeout(500);
+      await page.getByRole('button', { name: /save/i }).click();
+
+      await expect(page.getByText('Confirm Network Configuration Change')).toBeVisible();
+      await page.getByRole('checkbox', { name: /Enable automatic rollback/i }).check();
+      await page.getByRole('button', { name: /apply changes/i }).click();
+
+      // Verify overlay appears
+      await expect(page.locator('#overlay')).toBeVisible({ timeout: 10000 });
+
+      // CRITICAL: Button should NOT be shown (IP is unknown for DHCP)
+      await expect(page.getByRole('button', { name: /Open new address in new tab/i })).not.toBeVisible();
+
+      // Verify DHCP-specific text
+      await expect(page.locator('#overlay').getByText(/Find the new IP via DHCP server/i)).toBeVisible();
+    });
+
+    test('button hidden when waiting for rollback to complete', async ({ page }) => {
+      const shortTimeoutSeconds = 3;
+      await page.unroute('**/network');
+      await harness.mockNetworkConfig(page, { rollbackTimeoutSeconds: shortTimeoutSeconds });
+      await harness.mockHealthcheck(page, { healthcheckAlwaysFails: true });
+
+      await harness.setup(page, {
+        ipv4: {
+          addrs: [{ addr: 'localhost', dhcp: false, prefix_len: 24 }],
+          dns: ['8.8.8.8'],
+          gateways: ['192.168.1.1'],
+        },
+      });
+
+      const ipInput = page.getByRole('textbox', { name: /IP Address/i }).first();
+      await ipInput.fill('192.168.1.150');
+      await page.getByRole('button', { name: /save/i }).click();
+
+      await expect(page.getByText('Confirm Network Configuration Change')).toBeVisible();
+      await page.getByRole('button', { name: /apply changes/i }).click();
+
+      // Button should be visible initially during polling
+      await expect(page.getByRole('button', { name: /Open new address in new tab/i })).toBeVisible();
+
+      // Wait for timeout to trigger rollback
+      await harness.simulateRollbackTimeout();
+      await page.route('**/*192.168.1.150*/healthcheck', route => route.abort());
+      await page.waitForTimeout(6000);
+
+      // CRITICAL: Button should be HIDDEN during rollback verification (WaitingForOldIp state)
+      await expect(page.locator('#overlay').getByText(/Rollback in progress/i)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByRole('button', { name: /Open new address in new tab/i })).not.toBeVisible();
     });
   });
 
