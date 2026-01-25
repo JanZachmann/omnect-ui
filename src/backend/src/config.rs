@@ -27,6 +27,9 @@ pub struct AppConfig {
     /// Path configuration
     pub paths: PathConfig,
 
+    /// Device hostname
+    pub hostname: String,
+
     /// Tenant identifier
     pub tenant: String,
 }
@@ -120,6 +123,10 @@ impl AppConfig {
         let iot_edge = IoTEdgeConfig::load()?;
         let paths = PathConfig::load()?;
         let tenant = env::var("TENANT").unwrap_or_else(|_| "cp".to_string());
+        #[cfg(any(test, feature = "mock"))]
+        let hostname = env::var("HOSTNAME").unwrap_or_else(|_| "omnect-device".to_string());
+        #[cfg(not(any(test, feature = "mock")))]
+        let hostname = env::var("HOSTNAME").context("HOSTNAME env not set")?;
 
         Ok(Self {
             ui,
@@ -129,6 +136,7 @@ impl AppConfig {
             certificate,
             iot_edge,
             paths,
+            hostname,
             tenant,
         })
     }
@@ -218,11 +226,11 @@ impl DeviceServiceConfig {
 impl CertificateConfig {
     fn load() -> Result<Self> {
         let cert_path = env::var("CERT_PATH")
-            .unwrap_or_else(|_| "/cert/cert.pem".to_string())
+            .unwrap_or_else(|_| "/data/cert.pem".to_string())
             .into();
 
         let key_path = env::var("KEY_PATH")
-            .unwrap_or_else(|_| "/cert/key.pem".to_string())
+            .unwrap_or_else(|_| "/data/key.pem".to_string())
             .into();
 
         Ok(Self {

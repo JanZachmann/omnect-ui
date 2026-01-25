@@ -12,9 +12,7 @@ use crate::{
     keycloak_client::KeycloakProvider,
     omnect_device_service_client::{DeviceServiceClient, OmnectDeviceServiceClient},
     services::{
-        auth::TokenManager,
-        certificate::{CertificateService, CreateCertPayload},
-        network::NetworkConfigService,
+        auth::TokenManager, certificate::CertificateService, network::NetworkConfigService,
     },
 };
 use actix_cors::Cors;
@@ -35,7 +33,7 @@ use anyhow::{Context, Result};
 use env_logger::{Builder, Env, Target};
 use log::{debug, error, info, warn};
 use rustls::crypto::{CryptoProvider, ring::default_provider};
-use std::{io::Write, sync::Mutex};
+use std::io::Write;
 use tokio::{
     process::{Child, Command},
     signal::unix::{SignalKind, signal},
@@ -44,9 +42,6 @@ use tokio::{
 
 const UPLOAD_LIMIT_BYTES: usize = 250 * 1024 * 1024;
 const MEMORY_LIMIT_BYTES: usize = 10 * 1024 * 1024;
-
-// Cached common name (IP address) used for the current certificate
-static CACHED_COMMON_NAME: Mutex<Option<String>> = Mutex::new(None);
 
 // Include the generated static files from build.rs
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
@@ -75,21 +70,27 @@ impl std::fmt::Display for ShutdownReason {
 
 #[actix_web::main]
 async fn main() {
+    eprintln!("DEBUG: entering main");
     if let Err(e) = run().await {
+        eprintln!("DEBUG: run() failed: {e:#}");
         error!("application error: {e:#}");
         std::process::exit(1);
     }
 }
 
 async fn run() -> Result<()> {
+    eprintln!("DEBUG: entering run()");
     initialize()?;
 
+    eprintln!("DEBUG: setting up restart receiver");
     let mut restart_rx = NetworkConfigService::setup_restart_receiver()
         .map_err(|_| anyhow::anyhow!("restart receiver already initialized"))?;
 
+    eprintln!("DEBUG: setting up sigterm handler");
     let mut sigterm =
         signal(SignalKind::terminate()).context("failed to install SIGTERM handler")?;
 
+    eprintln!("DEBUG: creating device service client");
     let mut service_client =
         OmnectDeviceServiceClient::new().context("failed to create device service client")?;
 
@@ -101,6 +102,7 @@ async fn run() -> Result<()> {
 }
 
 fn initialize() -> Result<()> {
+    eprintln!("DEBUG: entering initialize()");
     log_panics::init();
 
     let mut builder = if cfg!(debug_assertions) {
@@ -127,9 +129,11 @@ fn initialize() -> Result<()> {
         env!("GIT_SHORT_REV")
     );
 
+    eprintln!("DEBUG: installing crypto provider");
     CryptoProvider::install_default(default_provider())
         .map_err(|_| anyhow::anyhow!("crypto provider already installed"))?;
 
+    eprintln!("DEBUG: creating frontend config file");
     KeycloakProvider::create_frontend_config_file()
         .context("failed to create frontend config file")?;
 
@@ -140,81 +144,46 @@ fn initialize() -> Result<()> {
     Ok(())
 }
 
-async fn needs_certificate_recreation(
-    service_client: &OmnectDeviceServiceClient,
-) -> Result<Option<String>> {
-    // Check if we have a cached common name
-    let cached = CACHED_COMMON_NAME.lock().unwrap().clone();
-
-    // Get all current IP addresses from network interfaces
-    let status = service_client.status().await?;
-    let all_ips: Vec<String> = status
-        .network_status
-        .network_interfaces
-        .iter()
-        .filter(|iface| iface.online)
-        .flat_map(|iface| iface.ipv4.addrs.iter().map(|addr| addr.addr.clone()))
-        .collect();
-
-    if let Some(cached_ip) = cached {
-        // Certificate needs recreation if cached IP is not in current IP list
-        if !all_ips.contains(&cached_ip) {
-            // Return the first IP as the new common name
-            Ok(Some(
-                all_ips
-                    .first()
-                    .cloned()
-                    .context("failed to get IP address from status")?,
-            ))
-        } else {
-            // Certificate still valid
-            Ok(None)
-        }
-    } else {
-        // No cached IP, need to create certificate
-        Ok(Some(
-            all_ips
-                .first()
-                .cloned()
-                .context("failed to get IP address from status")?,
-        ))
-    }
-}
-
 async fn run_until_shutdown(
     service_client: &mut OmnectDeviceServiceClient,
     restart_rx: &mut broadcast::Receiver<()>,
     sigterm: &mut tokio::signal::unix::Signal,
 ) -> Result<ShutdownReason> {
+    eprintln!("DEBUG: entering run_until_shutdown()");
     info!("starting server");
 
-    // 1. create the cert with the ip in CommonName (only if IP changed)
-    if let Some(current_ip) = needs_certificate_recreation(service_client).await? {
-        info!("creating new certificate for IP: {current_ip}");
-        CertificateService::create_module_certificate(CreateCertPayload {
-            common_name: current_ip.clone(),
-        })
+    // Get IPs to bind to
+    eprintln!("DEBUG: getting online interface IPs");
+    let mut bind_ips = get_online_interface_ips(service_client)
         .await
-        .context("failed to create certificate")?;
+        .context("failed to get online IPs")?;
 
-        // Update cached common name
-        *CACHED_COMMON_NAME.lock().unwrap() = Some(current_ip);
-    } else {
-        info!("certificate still valid, skipping recreation");
+    // Always ensure localhost is bound
+    if !bind_ips.contains(&"127.0.0.1".to_string()) {
+        bind_ips.push("127.0.0.1".to_string());
     }
 
+    // 1. Ensure all certificates are generated and cached
+    eprintln!("DEBUG: ensuring certificates are updated for: {:?}", bind_ips);
+    CertificateService::ensure_certificates_updated(service_client, &bind_ips)
+        .await
+        .context("failed to ensure certificates are updated")?;
+
     // 2. run centrifugo with valid cert
+    eprintln!("DEBUG: starting centrifugo");
     let mut centrifugo = run_centrifugo().context("failed to start centrifugo")?;
 
     // 3. register publish endpoint with running centrifugo
     if !service_client.has_publish_endpoint {
+        eprintln!("DEBUG: registering publish endpoint");
         service_client
             .register_publish_endpoint(AppConfig::get().centrifugo.publish_endpoint.clone())
             .await
             .context("failed to register publish endpoint")?;
     }
 
-    let (server_handle, server_task) = run_server(service_client.clone()).await?;
+    eprintln!("DEBUG: starting server task");
+    let (server_handle, server_task) = run_server(service_client.clone(), bind_ips).await?;
 
     if let Err(e) = NetworkConfigService::process_pending_rollback(service_client).await {
         error!("failed to process pending rollback: {e:#}");
@@ -266,6 +235,7 @@ async fn run_until_shutdown(
 
 async fn run_server(
     service_client: OmnectDeviceServiceClient,
+    bind_ips: Vec<String>,
 ) -> Result<(
     ServerHandle,
     tokio::task::JoinHandle<Result<(), std::io::Error>>,
@@ -274,13 +244,14 @@ async fn run_server(
         .await
         .context("failed to create api")?;
 
-    let tls_config = load_tls_config().context("failed to load tls config")?;
     let config = &AppConfig::get();
     let ui_port = config.ui.port;
     let session_key = Key::generate();
     let token_manager = TokenManager::new(&config.centrifugo.client_token);
 
-    let server = HttpServer::new(move || {
+    info!("binding web server to IPs: {:?}", bind_ips);
+
+    let mut server = HttpServer::new(move || {
         App::new()
             .wrap(
                 Cors::default()
@@ -359,11 +330,37 @@ async fn run_server(
             .route("/ack-rollback", web::post().to(UiApi::ack_rollback))
             .service(ResourceFiles::new("/static", static_files()))
             .default_service(web::route().to(UiApi::index))
-    })
-    .bind_rustls_0_23(format!("0.0.0.0:{ui_port}"), tls_config)
-    .context("failed to bind server")?
-    .disable_signals()
-    .run();
+    });
+
+    let mut bound_listeners = Vec::new();
+    for ip in bind_ips {
+        match std::net::TcpListener::bind((ip.as_str(), ui_port)) {
+            Ok(listener) => match build_tls_config_for_ip(&ip) {
+                Ok(tls_config) => {
+                    info!("successfully bound tcp listener to {ip}:{ui_port}");
+                    bound_listeners.push((listener, tls_config));
+                }
+                Err(e) => {
+                    warn!("failed to build tls config for {ip}: {e}");
+                }
+            },
+            Err(e) => {
+                warn!("failed to bind tcp listener to {ip}:{ui_port}: {e}");
+            }
+        }
+    }
+
+    if bound_listeners.is_empty() {
+        anyhow::bail!("failed to bind to any IP addresses");
+    }
+
+    for (listener, tls_config) in bound_listeners {
+        server = server
+            .listen_rustls_0_23(listener, tls_config)
+            .context("failed to attach tcp listener to server")?;
+    }
+
+    let server = server.disable_signals().run();
 
     Ok((server.handle(), tokio::spawn(server)))
 }
@@ -405,36 +402,29 @@ fn run_centrifugo() -> Result<Child> {
     Ok(centrifugo)
 }
 
-fn load_tls_config() -> Result<rustls::ServerConfig> {
-    let paths = &AppConfig::get().certificate;
+fn build_tls_config_for_ip(ip: &str) -> Result<rustls::ServerConfig> {
+    // Create the SNI resolver with the IP as fallback
+    let resolver = CertificateService::create_sni_resolver(ip.to_string());
 
-    let mut tls_certs = std::io::BufReader::new(
-        std::fs::File::open(&paths.cert_path).context("failed to open certificate file")?,
-    );
-
-    let mut tls_key = std::io::BufReader::new(
-        std::fs::File::open(&paths.key_path).context("failed to open key file")?,
-    );
-
-    let tls_certs = rustls_pemfile::certs(&mut tls_certs)
-        .collect::<Result<Vec<_>, _>>()
-        .context("failed to parse certificate pem")?;
-
-    let key_item = rustls_pemfile::read_one(&mut tls_key)
-        .context("failed to read key pem file")?
-        .context("no valid key found in pem file")?;
-
-    let config = match key_item {
-        rustls_pemfile::Item::Pkcs1Key(key) => rustls::ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(tls_certs, rustls::pki_types::PrivateKeyDer::Pkcs1(key))
-            .context("failed to create tls config with pkcs1 key")?,
-        rustls_pemfile::Item::Pkcs8Key(key) => rustls::ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(tls_certs, rustls::pki_types::PrivateKeyDer::Pkcs8(key))
-            .context("failed to create tls config with pkcs8 key")?,
-        _ => anyhow::bail!("unexpected key type in pem file"),
-    };
+    // Build the TLS config with the SNI resolver
+    let config = rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_cert_resolver(resolver);
 
     Ok(config)
+}
+
+/// Get all IP addresses from online network interfaces
+async fn get_online_interface_ips(
+    service_client: &OmnectDeviceServiceClient,
+) -> Result<Vec<String>> {
+    let status = service_client.status().await?;
+
+    Ok(status
+        .network_status
+        .network_interfaces
+        .iter()
+        .filter(|iface| iface.online)
+        .flat_map(|iface| iface.ipv4.addrs.iter().map(|addr| addr.addr.clone()))
+        .collect())
 }
