@@ -63,7 +63,7 @@ impl KeycloakProvider {
 }
 
 /// Parse base64-encoded SPKI public key (as returned by Keycloak's realm endpoint)
-/// into a DecodingKey for JWT verification.
+/// into a `DecodingKey` for JWT verification.
 fn decoding_key_from_keycloak(base64_spki: &str) -> Result<DecodingKey> {
     let pem = format!("-----BEGIN PUBLIC KEY-----\n{base64_spki}\n-----END PUBLIC KEY-----");
     DecodingKey::from_rsa_pem(pem.as_bytes()).context("failed to parse public key from PEM")

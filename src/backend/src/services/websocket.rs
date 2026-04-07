@@ -15,20 +15,21 @@ pub struct PublishPayload {
     pub data: Value,
 }
 
+#[allow(clippy::future_not_send, clippy::unused_async)]
 pub async fn ws_route(
     req: actix_web::HttpRequest,
     stream: web::Payload,
     tx: web::Data<broadcast::Sender<String>>,
 ) -> Result<actix_web::HttpResponse, actix_web::Error> {
     let peer = req.peer_addr();
-    debug!("WebSocket connection attempt from {:?}", peer);
+    debug!("WebSocket connection attempt from {peer:?}");
 
     let (response, mut session, mut msg_stream) = actix_ws::handle(&req, stream)?;
 
     let mut rx = tx.subscribe();
 
     actix_web::rt::spawn(async move {
-        debug!("WebSocket session started for {:?}", peer);
+        debug!("WebSocket session started for {peer:?}");
         loop {
             tokio::select! {
                 res = msg_stream.next() => {
@@ -39,17 +40,17 @@ pub async fn ws_route(
                             }
                         }
                         Some(Ok(Message::Close(reason))) => {
-                            debug!("WebSocket closed by client {:?}: {:?}", peer, reason);
+                            debug!("WebSocket closed by client {peer:?}: {reason:?}");
                             let _ = session.close(reason).await;
                             break;
                         }
                         Some(Ok(_)) => {} // ignore text/binary
                         Some(Err(e)) => {
-                            error!("WebSocket protocol error for {:?}: {}", peer, e);
+                            error!("WebSocket protocol error for {peer:?}: {e}");
                             break;
                         }
                         None => {
-                            debug!("WebSocket stream ended for {:?}", peer);
+                            debug!("WebSocket stream ended for {peer:?}");
                             break;
                         }
                     }
@@ -58,29 +59,30 @@ pub async fn ws_route(
                 res = rx.recv() => {
                     match res {
                         Ok(msg) => {
-                            debug!("Forwarding broadcast message to {:?}: {}", peer, msg);
+                            debug!("Forwarding broadcast message to {peer:?}: {msg}");
                             if session.text(msg).await.is_err() {
-                                debug!("Failed to send message to {:?}, closing", peer);
+                                debug!("Failed to send message to {peer:?}, closing");
                                 break;
                             }
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
-                            warn!("WebSocket receiver for {:?} lagged by {} messages", peer, n);
+                            warn!("WebSocket receiver for {peer:?} lagged by {n} messages");
                         }
                         Err(broadcast::error::RecvError::Closed) => {
-                            debug!("Broadcast channel closed, ending WebSocket for {:?}", peer);
+                            debug!("Broadcast channel closed, ending WebSocket for {peer:?}");
                             break;
                         }
                     }
                 }
             }
         }
-        debug!("WebSocket session ended for {:?}", peer);
+        debug!("WebSocket session ended for {peer:?}");
     });
 
     Ok(response)
 }
 
+#[allow(clippy::future_not_send, clippy::unused_async)]
 pub async fn internal_publish(
     req: actix_web::HttpRequest,
     body: web::Bytes,

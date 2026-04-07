@@ -10,7 +10,7 @@ use crate::{
 
 /// Handle network form start edit - initialize form with current network adapter data
 pub fn handle_network_form_start_edit(
-    adapter_name: String,
+    adapter_name: &str,
     model: &mut Model,
 ) -> Command<Effect, Event> {
     // Find the network adapter and copy its data to form state
@@ -23,7 +23,7 @@ pub fn handle_network_form_start_edit(
         let form_data = NetworkFormData::from(adapter);
 
         model.network_form_state = NetworkFormState::Editing {
-            adapter_name: adapter_name.clone(),
+            adapter_name: adapter_name.to_string(),
             form_data: form_data.clone(),
             original_data: form_data,
             errors: HashMap::new(),
@@ -40,11 +40,11 @@ pub fn handle_network_form_start_edit(
 
 /// Handle network form update - update form data from user input
 pub fn handle_network_form_update(
-    form_data_json: String,
+    form_data_json: &str,
     model: &mut Model,
 ) -> Command<Effect, Event> {
     // Parse the JSON form data
-    let parsed: Result<NetworkFormData, _> = serde_json::from_str(&form_data_json);
+    let parsed: Result<NetworkFormData, _> = serde_json::from_str(form_data_json);
 
     match parsed {
         Ok(form_data) => {
@@ -154,7 +154,7 @@ mod tests {
                 ..Default::default()
             };
 
-            let _ = handle_network_form_start_edit("eth0".to_string(), &mut model);
+            let _ = handle_network_form_start_edit("eth0", &mut model);
 
             assert!(matches!(
                 model.network_form_state,
@@ -198,7 +198,7 @@ mod tests {
             };
 
             let _ =
-                handle_network_form_update(serde_json::to_string(&form_data).unwrap(), &mut model);
+                handle_network_form_update(&serde_json::to_string(&form_data).unwrap(), &mut model);
 
             assert!(!model.network_form_dirty);
         }
@@ -229,7 +229,7 @@ mod tests {
             };
 
             let _ = handle_network_form_update(
-                serde_json::to_string(&changed_data).unwrap(),
+                &serde_json::to_string(&changed_data).unwrap(),
                 &mut model,
             );
 
@@ -263,7 +263,7 @@ mod tests {
                 ..Default::default()
             };
 
-            let _ = handle_network_form_start_edit("eth0".to_string(), &mut model);
+            let _ = handle_network_form_start_edit("eth0", &mut model);
 
             if let NetworkFormState::Editing {
                 form_data,
@@ -308,8 +308,10 @@ mod tests {
                 ..Default::default()
             };
 
-            let _ =
-                handle_network_form_update(serde_json::to_string(&wlan0_data).unwrap(), &mut model);
+            let _ = handle_network_form_update(
+                &serde_json::to_string(&wlan0_data).unwrap(),
+                &mut model,
+            );
 
             if let NetworkFormState::Editing {
                 adapter_name,
@@ -376,7 +378,7 @@ mod tests {
             changed_data.ip_address = "192.168.1.101".to_string();
 
             let _ = handle_network_form_update(
-                serde_json::to_string(&changed_data).unwrap(),
+                &serde_json::to_string(&changed_data).unwrap(),
                 &mut model,
             );
 

@@ -111,6 +111,7 @@ where
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn verify_user(auth: BasicAuth) -> bool {
     let Some(password) = auth.password() else {
         return false;

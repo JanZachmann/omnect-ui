@@ -88,7 +88,7 @@ impl NetworkConfigService {
     /// Receiver for restart signals, or error if already initialized
     pub fn setup_restart_receiver() -> Result<broadcast::Receiver<()>, broadcast::Sender<()>> {
         let (tx, rx) = broadcast::channel(1);
-        SERVER_RESTART_TX.set(tx).map(|_| rx)
+        SERVER_RESTART_TX.set(tx).map(|()| rx)
     }
 
     /// Set network configuration with validation and rollback on error
@@ -102,6 +102,7 @@ impl NetworkConfigService {
     ///
     /// # Returns
     /// Result with the network config response including rollback timeout, or an error
+    #[allow(clippy::future_not_send)]
     pub async fn set_network_config<T>(
         service_client: &T,
         request: &NetworkConfigRequest,
@@ -153,9 +154,12 @@ impl NetworkConfigService {
                 std::fs::OpenOptions::new()
                     .read(true)
                     .open(path)
-                    .context(format!("failed to open rollback file: {path:?}"))?,
+                    .context(format!("failed to open rollback file: {}", path.display()))?,
             )
-            .context(format!("failed to deserialize rollback: {path:?}"))?;
+            .context(format!(
+                "failed to deserialize rollback: {}",
+                path.display()
+            ))?;
 
             // check if deadline reached
             if let Ok(remaining_time) = rollback.deadline.duration_since(SystemTime::now()) {
@@ -193,6 +197,7 @@ impl NetworkConfigService {
     ///
     /// # Returns
     /// true if rollback file exists, false otherwise
+    #[must_use]
     pub fn rollback_exists() -> bool {
         network_rollback_file!().exists()
     }
@@ -230,7 +235,11 @@ impl NetworkConfigService {
         match fs::copy(src, dest) {
             Ok(_) => Ok(true),
             Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(e).context(format!("failed to copy {src:?} to {dest:?}")),
+            Err(e) => Err(e).context(format!(
+                "failed to copy {} to {}",
+                src.display(),
+                dest.display()
+            )),
         }
     }
 
@@ -244,9 +253,13 @@ impl NetworkConfigService {
     /// Result with bool indicating if rename happened (true) or source didn't exist (false)
     fn rename_if_exists(src: &Path, dest: &Path) -> Result<bool> {
         match fs::rename(src, dest) {
-            Ok(_) => Ok(true),
+            Ok(()) => Ok(true),
             Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(e).context(format!("failed to rename {src:?} to {dest:?}")),
+            Err(e) => Err(e).context(format!(
+                "failed to rename {} to {}",
+                src.display(),
+                dest.display()
+            )),
         }
     }
 
@@ -267,7 +280,7 @@ impl NetworkConfigService {
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             if let Err(e) = tx.send(()) {
-                error!("failed to send restart signal after delay: {}", e);
+                error!("failed to send restart signal after delay: {e}");
             }
         });
 
@@ -283,6 +296,7 @@ impl NetworkConfigService {
     ///
     /// # Returns
     /// Result indicating success or failure
+    #[allow(clippy::future_not_send)]
     async fn apply_network_config<T>(
         service_client: &T,
         network: &NetworkConfigRequest,
@@ -318,6 +332,7 @@ impl NetworkConfigService {
     ///
     /// # Returns
     /// Result indicating success or failure
+    #[allow(clippy::future_not_send)]
     async fn backup_current_network_config<T>(
         service_client: &T,
         network_name: &String,
@@ -356,10 +371,14 @@ impl NetworkConfigService {
 
             // map to internal mount
             let config_file = network_path!(file_name);
-            log::debug!("config file is {config_file:?}");
+            log::debug!("config file is {}", config_file.display());
 
             if !Self::copy_if_exists(&config_file, &backup_file)? {
-                error!("failed to copy {config_file:?} to {backup_file:?}")
+                error!(
+                    "failed to copy {} to {}",
+                    config_file.display(),
+                    backup_file.display()
+                );
             }
         }
 
@@ -379,7 +398,7 @@ impl NetworkConfigService {
         ini.with_section(Some("Match".to_owned()))
             .set("Name", &network.name);
 
-        let mut network_section = ini.with_section(Some("Network").to_owned());
+        let mut network_section = ini.with_section(Some("Network"));
 
         if network.dhcp {
             network_section.set("DHCP", "yes");
@@ -390,20 +409,22 @@ impl NetworkConfigService {
             network_section.set("Address", format!("{ip}/{mask}"));
 
             for gateway in &network.gateway {
-                network_section.add("Gateway", gateway.to_string());
+                network_section.add("Gateway", gateway.clone());
             }
 
             for dns in &network.dns {
-                network_section.add("DNS", dns.to_string());
+                network_section.add("DNS", dns.clone());
             }
         }
 
         let config_path = network_config_file!(&network.name);
 
-        info!("write network config to {config_path:?}: {ini:?}");
+        info!("write network config to {}: {ini:?}", config_path.display());
 
-        ini.write_to_file(&config_path)
-            .context(format!("failed to write network config: {config_path:?}"))?;
+        ini.write_to_file(&config_path).context(format!(
+            "failed to write network config: {}",
+            config_path.display()
+        ))?;
 
         Ok(())
     }
@@ -431,10 +452,13 @@ impl NetworkConfigService {
                 .create(true)
                 .truncate(true)
                 .open(path)
-                .context(format!("failed to open rollback file for write: {path:?}"))?,
+                .context(format!(
+                    "failed to open rollback file for write: {}",
+                    path.display()
+                ))?,
             &rollback,
         )
-        .context(format!("failed to serialize rollback: {path:?}"))
+        .context(format!("failed to serialize rollback: {}", path.display()))
     }
 }
 

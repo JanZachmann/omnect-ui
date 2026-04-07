@@ -3,7 +3,7 @@ use crux_core::Command;
 use crate::{
     Effect, TimeCmd,
     events::{DeviceEvent, Event, UiEvent},
-    http_get_silent,
+    http_get, http_get_silent,
     model::Model,
     types::{HealthcheckInfo, NetworkChangeState, OverlaySpinnerState},
     unauth_post,
@@ -90,11 +90,9 @@ pub fn update_network_state_and_spinner(
 
     let spinner = OverlaySpinnerState::new("Applying network settings").with_text(overlay_text);
 
-    model.overlay_spinner = if rollback_enabled && !switching_to_dhcp {
-        spinner.with_countdown(rollback_timeout_seconds as u32)
-    } else if rollback_enabled && switching_to_dhcp {
-        // Show countdown even for DHCP if rollback is enabled
-        spinner.with_countdown(rollback_timeout_seconds as u32)
+    let timeout_u32 = u32::try_from(rollback_timeout_seconds).unwrap_or(u32::MAX);
+    model.overlay_spinner = if rollback_enabled {
+        spinner.with_countdown(timeout_u32)
     } else {
         spinner
     };
@@ -114,7 +112,9 @@ pub fn handle_new_ip_check_tick(model: &mut Model) -> Command<Effect, Event> {
 
             // If switching to DHCP, we don't know the new IP, so we can't poll it.
             // We just wait for the timeout (rollback) or for the user to manually navigate.
-            if !*switching_to_dhcp {
+            if *switching_to_dhcp {
+                crux_core::render::render()
+            } else {
                 // Try to reach the new IP, then reschedule
                 let url = format!("https://{new_ip}:{ui_port}/healthcheck");
                 Command::all([
@@ -127,8 +127,6 @@ pub fn handle_new_ip_check_tick(model: &mut Model) -> Command<Effect, Event> {
                     ),
                     schedule_new_ip_poll(),
                 ])
-            } else {
-                crux_core::render::render()
             }
         }
         NetworkChangeState::WaitingForOldIp {
@@ -139,7 +137,6 @@ pub fn handle_new_ip_check_tick(model: &mut Model) -> Command<Effect, Event> {
             *attempt += 1;
             // Poll the old IP to see if rollback completed, then reschedule
             let url = format!("https://{old_ip}:{ui_port}/healthcheck");
-            use crate::http_get;
             Command::all([
                 http_get!(
                     Device,

@@ -23,6 +23,7 @@ pub enum DeviceOperationState {
 }
 
 impl DeviceOperationState {
+    #[must_use]
     pub fn operation_name(&self) -> String {
         match self {
             Self::Rebooting => "Reboot".to_string(),

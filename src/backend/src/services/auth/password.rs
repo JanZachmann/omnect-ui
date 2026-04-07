@@ -128,6 +128,7 @@ impl PasswordService {
     ///
     /// # Returns
     /// true if password file exists, false otherwise
+    #[must_use]
     pub fn password_exists() -> bool {
         AppConfig::get()
             .paths

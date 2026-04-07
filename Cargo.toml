@@ -20,10 +20,50 @@ codegen-units = 1   # Maximize optimization for production
 strip = true        # Strip debug symbols
 panic = "abort"     # Remove unwinding code to further reduce size
 
+[workspace.lints.clippy]
+# Enable lint groups
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# Suppressed pedantic/nursery lints
+doc_markdown = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+option_if_let_else = "allow"
+redundant_pub_crate = "allow"
+similar_names = "allow"
+struct_excessive_bools = "allow"
+struct_field_names = "allow"
+too_many_lines = "allow"
+# Enforced restriction lints (cherry-picked)
+map_err_ignore = "warn"
+# Suppressed restriction lints (off by default, listed to document decisions)
+absolute_paths = "allow"
+arbitrary_source_item_ordering = "allow"
+doc_paragraphs_missing_punctuation = "allow"
+exhaustive_enums = "allow"
+exhaustive_structs = "allow"
+implicit_return = "allow"
+mem_forget = "allow"
+min_ident_chars = "allow"
+missing_docs_in_private_items = "allow"
+missing_inline_in_public_items = "allow"
+mod_module_files = "allow"
+pattern_type_mismatch = "allow"
+pub_use = "allow"
+pub_with_shorthand = "allow"
+single_call_fn = "allow"
+std_instead_of_core = "allow"
+str_to_string = "allow"
+
+[workspace.lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = ['cfg(feature, values("facet_typegen"))']
+
 [workspace.package]
 authors = ["omnect@conplement.de"]
 edition = "2024"
 homepage = "https://www.omnect.io/home"
 license = "MIT OR Apache-2.0"
 repository = "git@github.com:omnect/omnect-ui.git"
-version = "1.2.0"
+version = "1.2.1"

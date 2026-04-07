@@ -42,7 +42,7 @@ pub struct OdsOsInfo {
 }
 
 /// System information update from ODS
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub struct OdsSystemInfo {
     pub os: OdsOsInfo,
@@ -86,7 +86,7 @@ impl From<OdsTimeouts> for Timeouts {
     fn from(ods: OdsTimeouts) -> Self {
         Self {
             wait_online_timeout: TimeoutDuration {
-                nanos: ods.wait_online_timeout.nanos as u32,
+                nanos: ods.wait_online_timeout.nanos.unsigned_abs(),
                 secs: ods.wait_online_timeout.secs,
             },
         }
@@ -170,7 +170,7 @@ impl From<OdsNetworkStatus> for NetworkStatus {
     }
 }
 
-/// Factory reset result status — ODS sends numeric values (serde_repr)
+/// Factory reset result status — ODS sends numeric values (`serde_repr`)
 #[derive(Debug, Clone, Deserialize_repr, PartialEq, Eq)]
 #[repr(u8)]
 pub enum OdsFactoryResetResultStatus {

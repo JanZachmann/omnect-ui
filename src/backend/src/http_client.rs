@@ -31,7 +31,8 @@ pub fn unix_socket_client(socket_path: &str) -> Result<Client> {
         socket_path
             .try_exists()
             .context("failed to check if socket path exists")?,
-        "failed since socket path does not exist: {socket_path:?}"
+        "failed since socket path does not exist: {}",
+        socket_path.display()
     );
 
     Client::builder()
@@ -81,7 +82,7 @@ impl ServiceResultResponse for crate::services::network::SetNetworkConfigRespons
 /// * `operation` - Context message describing the operation
 ///
 /// # Returns
-/// * `HttpResponse` - The ServiceResultResponse (HttpResponse::Ok or HttpResponse::InternalServerError)
+/// * `HttpResponse` - The `ServiceResultResponse` (`HttpResponse::Ok` or `HttpResponse::InternalServerError`)
 pub fn handle_service_result<T>(result: Result<T>, operation: &str) -> HttpResponse
 where
     T: ServiceResultResponse,

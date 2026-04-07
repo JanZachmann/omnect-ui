@@ -3,7 +3,7 @@
 //! Types are organized by domain to match the structure in `update/`:
 //! - auth: Authentication types
 //! - device: Device operation state
-//! - factory_reset: Factory reset types
+//! - `factory_reset`: Factory reset types
 //! - network: Network configuration types
 //! - update: Firmware update types
 //! - common: Shared system types

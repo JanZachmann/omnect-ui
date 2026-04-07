@@ -53,7 +53,7 @@ static CACHED_COMMON_NAME: Mutex<Option<String>> = Mutex::new(None);
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
 // Alias the generated function to a more descriptive name
-#[inline(always)]
+#[inline]
 fn static_files() -> std::collections::HashMap<&'static str, static_files::Resource> {
     generate()
 }
@@ -68,8 +68,8 @@ enum ShutdownReason {
 impl std::fmt::Display for ShutdownReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ShutdownReason::Restart => write!(f, "restarting server"),
-            ShutdownReason::Shutdown => write!(f, "shutting down"),
+            Self::Restart => write!(f, "restarting server"),
+            Self::Shutdown => write!(f, "shutting down"),
         }
     }
 }
@@ -85,6 +85,7 @@ async fn main() {
 async fn run() -> Result<()> {
     initialize()?;
 
+    #[allow(clippy::map_err_ignore)] // original error is () — no info to preserve
     let mut restart_rx = NetworkConfigService::setup_restart_receiver()
         .map_err(|_| anyhow::anyhow!("restart receiver already initialized"))?;
 
@@ -94,9 +95,10 @@ async fn run() -> Result<()> {
     let mut service_client =
         OmnectDeviceServiceClient::new().context("failed to create device service client")?;
 
-    while let ShutdownReason::Restart =
-        run_until_shutdown(&mut service_client, &mut restart_rx, &mut sigterm).await?
-    {}
+    while matches!(
+        run_until_shutdown(&mut service_client, &mut restart_rx, &mut sigterm).await?,
+        ShutdownReason::Restart
+    ) {}
 
     Ok(())
 }
@@ -124,6 +126,8 @@ fn initialize() -> Result<()> {
 
     info!("module version: {}", env!("CARGO_PKG_VERSION"));
 
+    #[allow(clippy::map_err_ignore)]
+    // original error is the rejected CryptoProvider value — not useful
     CryptoProvider::install_default(default_provider())
         .map_err(|_| anyhow::anyhow!("crypto provider already installed"))?;
 
@@ -155,7 +159,10 @@ async fn needs_certificate_recreation(
 
     if let Some(cached_ip) = cached {
         // Certificate needs recreation if cached IP is not in current IP list
-        if !all_ips.contains(&cached_ip) {
+        if all_ips.contains(&cached_ip) {
+            // Certificate still valid
+            Ok(None)
+        } else {
             // Return the first IP as the new common name
             Ok(Some(
                 all_ips
@@ -163,9 +170,6 @@ async fn needs_certificate_recreation(
                     .cloned()
                     .context("failed to get IP address from status")?,
             ))
-        } else {
-            // Certificate still valid
-            Ok(None)
         }
     } else {
         // No cached IP, need to create certificate
@@ -276,16 +280,13 @@ fn optimal_worker_count() -> usize {
     const MAX_WORKERS: usize = 4;
 
     let cpu_count = std::thread::available_parallelism()
-        .map(|n| n.get())
+        .map(std::num::NonZero::get)
         .unwrap_or(2);
 
     // For I/O-bound workloads, use fewer workers than CPUs
     let workers = (cpu_count / 2).clamp(MIN_WORKERS, MAX_WORKERS);
 
-    info!(
-        "configuring {} worker threads (detected {} CPUs)",
-        workers, cpu_count
-    );
+    info!("configuring {workers} worker threads (detected {cpu_count} CPUs)");
     workers
 }
 
@@ -320,7 +321,7 @@ async fn run_server(
     tokio::task::JoinHandle<Result<(), std::io::Error>>,
     tokio::task::JoinHandle<Result<(), std::io::Error>>,
 )> {
-    let api = UiApi::new(service_client.clone(), Default::default())
+    let api = UiApi::new(service_client.clone(), KeycloakProvider)
         .await
         .context("failed to create api")?;
 

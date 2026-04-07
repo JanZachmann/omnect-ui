@@ -3,6 +3,7 @@ use serde_valid::Validate;
 use std::collections::HashMap;
 
 /// Validate IPv4 address format
+#[must_use]
 pub fn is_valid_ipv4(ip: &str) -> bool {
     if ip.is_empty() {
         return true; // Empty is considered valid (for optional fields)
@@ -23,14 +24,15 @@ pub fn is_valid_ipv4(ip: &str) -> bool {
 }
 
 /// Convert CIDR prefix length to Dotted Decimal Subnet Mask
+#[must_use]
 pub fn cidr_to_subnet(cidr: u32) -> String {
     if cidr > 32 {
-        return "".to_string();
+        return String::new();
     }
     let mask = if cidr == 0 {
         0
     } else {
-        0xffffffffu32 << (32 - cidr)
+        0xffff_ffff_u32 << (32 - cidr)
     };
     format!(
         "{}.{}.{}.{}",
@@ -42,6 +44,7 @@ pub fn cidr_to_subnet(cidr: u32) -> String {
 }
 
 /// Convert Dotted Decimal Subnet Mask to CIDR prefix length
+#[must_use]
 pub fn subnet_to_cidr(subnet: &str) -> Option<u32> {
     let parts: Vec<u32> = subnet
         .split('.')
@@ -72,6 +75,7 @@ pub fn subnet_to_cidr(subnet: &str) -> Option<u32> {
 
 /// Validate and parse netmask value
 /// Accepts "/24" or "24" format, returns prefix length if valid
+#[must_use]
 pub fn parse_netmask(mask: &str) -> Option<u32> {
     let cleaned = mask.trim_start_matches('/');
     if let Ok(prefix_len) = cleaned.parse::<u32>()
@@ -121,6 +125,7 @@ pub struct NetworkStatus {
 
 impl NetworkStatus {
     /// Determine which adapter is the current connection based on browser hostname
+    #[must_use]
     pub fn current_connection_adapter(
         &self,
         browser_hostname: Option<&str>,
@@ -173,7 +178,7 @@ pub struct NetworkConfigRequest {
     pub gateway: Vec<String>,
     pub dns: Vec<String>,
     /// Whether to enable automatic rollback protection.
-    /// Only applicable when is_server_addr=true AND ip_changed=true.
+    /// Only applicable when `is_server_addr=true` AND `ip_changed=true`.
     #[serde(default)]
     pub enable_rollback: Option<bool>,
     /// Whether this change is switching to DHCP
@@ -199,8 +204,8 @@ impl From<&DeviceNetwork> for NetworkFormData {
         Self {
             name: adapter.name.clone(),
             ip_address: addr.map(|a| a.addr.clone()).unwrap_or_default(),
-            dhcp: addr.map(|a| a.dhcp).unwrap_or(false),
-            subnet_mask: cidr_to_subnet(addr.map(|a| a.prefix_len).unwrap_or(24)),
+            dhcp: addr.is_some_and(|a| a.dhcp),
+            subnet_mask: cidr_to_subnet(addr.map_or(24, |a| a.prefix_len)),
             dns: adapter.ipv4.dns.clone(),
             gateways: adapter.ipv4.gateways.clone(),
         }
@@ -231,6 +236,7 @@ pub enum NetworkFormState {
 
 impl NetworkFormState {
     /// Transition from Editing to Submitting state
+    #[must_use]
     pub fn to_submitting(&self, target_adapter_name: &str) -> Option<Self> {
         if let Self::Editing {
             adapter_name,
@@ -252,6 +258,7 @@ impl NetworkFormState {
     }
 
     /// Transition from Submitting back to Editing state
+    #[must_use]
     pub fn to_editing(&self) -> Option<Self> {
         if let Self::Submitting {
             adapter_name,
@@ -320,11 +327,11 @@ impl NetworkFormState {
 /// # State Descriptions
 ///
 /// - **Idle**: No network change in progress
-/// - **ApplyingConfig**: Configuration request sent to backend, waiting for response
-/// - **WaitingForNewIp**: Polling new IP to verify reachability before rollback timeout
-/// - **NewIpReachable**: New IP confirmed reachable; browser redirect causes page reload → Idle
-/// - **NewIpTimeout**: Timeout expired, rollback disabled; user manually navigates → page reload → Idle
-/// - **WaitingForOldIp**: Rollback assumed, polling old IP; on success → Idle
+/// - **`ApplyingConfig`**: Configuration request sent to backend, waiting for response
+/// - **`WaitingForNewIp`**: Polling new IP to verify reachability before rollback timeout
+/// - **`NewIpReachable`**: New IP confirmed reachable; browser redirect causes page reload → Idle
+/// - **`NewIpTimeout`**: Timeout expired, rollback disabled; user manually navigates → page reload → Idle
+/// - **`WaitingForOldIp`**: Rollback assumed, polling old IP; on success → Idle
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum NetworkChangeState {

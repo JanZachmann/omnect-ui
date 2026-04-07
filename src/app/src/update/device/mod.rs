@@ -117,7 +117,9 @@ pub fn handle(event: DeviceEvent, model: &mut Model) -> Command<Effect, Event> {
             handle_set_network_config_response(result, model)
         }
 
-        DeviceEvent::AckRollbackResponse(result) => handle_ack_response(result, model),
+        DeviceEvent::AckRollbackResponse(result)
+        | DeviceEvent::AckFactoryResetResultResponse(result)
+        | DeviceEvent::AckUpdateValidationResponse(result) => handle_ack_response(result, model),
 
         DeviceEvent::LoadUpdate { file_path } => {
             let request = LoadUpdateRequest { file_path };
@@ -175,19 +177,13 @@ pub fn handle(event: DeviceEvent, model: &mut Model) -> Command<Effect, Event> {
         DeviceEvent::AckFactoryResetResult => handle_ack_factory_reset_result(model),
         DeviceEvent::AckUpdateValidation => handle_ack_update_validation(model),
 
-        DeviceEvent::AckFactoryResetResultResponse(result) => handle_ack_response(result, model),
-
-        DeviceEvent::AckUpdateValidationResponse(result) => handle_ack_response(result, model),
-
         // Network form events
-        DeviceEvent::NetworkFormStartEdit { adapter_name } => {
-            handle_network_form_start_edit(adapter_name, model)
+        DeviceEvent::NetworkFormStartEdit { adapter_name }
+        | DeviceEvent::NetworkFormReset { adapter_name } => {
+            handle_network_form_start_edit(&adapter_name, model)
         }
         DeviceEvent::NetworkFormUpdate { form_data } => {
-            handle_network_form_update(form_data, model)
-        }
-        DeviceEvent::NetworkFormReset { adapter_name } => {
-            handle_network_form_start_edit(adapter_name, model)
+            handle_network_form_update(&form_data, model)
         }
     }
 }

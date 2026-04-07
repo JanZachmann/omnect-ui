@@ -76,15 +76,13 @@ pub fn handle(event: WebSocketEvent, model: &mut Model) -> Command<Effect, Event
 }
 
 /// When the form has no unsaved changes, re-initialize it from freshly updated adapter data.
-/// This keeps the form in sync when external events (e.g. WiFi connecting) change the
+/// This keeps the form in sync when external events (e.g. `WiFi` connecting) change the
 /// adapter's IP/config at the OS level.
 fn sync_network_form_from_status(m: &mut Model) {
-    let maybe_adapter_name = if !m.network_form_dirty {
-        if let NetworkFormState::Editing { adapter_name, .. } = &m.network_form_state {
-            Some(adapter_name.clone())
-        } else {
-            None
-        }
+    let maybe_adapter_name = if m.network_form_dirty {
+        None
+    } else if let NetworkFormState::Editing { adapter_name, .. } = &m.network_form_state {
+        Some(adapter_name.clone())
     } else {
         None
     };

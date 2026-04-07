@@ -7,7 +7,7 @@
 use actix_web::cookie::Key;
 use log::{info, warn};
 
-/// actix-web's cookie::Key requires at least 64 bytes (512 bits).
+/// actix-web's `cookie::Key` requires at least 64 bytes (512 bits).
 const SESSION_KEY_LEN: usize = 64;
 
 /// Service for session key management
@@ -18,6 +18,7 @@ impl SessionKeyService {
     ///
     /// Falls back to an ephemeral (in-memory only) key when the path is
     /// unreadable for reasons other than the file not existing yet.
+    #[must_use]
     pub fn load_or_generate(path: &std::path::Path) -> Key {
         match std::fs::read(path) {
             Ok(bytes) if bytes.len() >= SESSION_KEY_LEN => {

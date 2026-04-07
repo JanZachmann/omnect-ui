@@ -86,9 +86,8 @@ impl WifiCommissioningServiceClient {
                             version: version_response.version,
                             interface_name,
                         };
-                    } else {
-                        log::error!("WiFi service reported OK status but no interface name");
                     }
+                    log::error!("WiFi service reported OK status but no interface name");
                 } else {
                     log::warn!(
                         "WiFi service version '{}' is lower than required minimum {}",
@@ -123,6 +122,7 @@ impl WifiCommissioningServiceClient {
     }
 
     /// Try to create a client. Returns `None` if the socket does not exist.
+    #[must_use]
     pub fn try_new(socket_path: &Path) -> Option<Self> {
         let path_str = socket_path.to_string_lossy();
 

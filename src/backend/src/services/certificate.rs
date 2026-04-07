@@ -1,6 +1,6 @@
 //! Certificate management service
 //!
-//! Handles module certificate creation and persistence for IoT Edge modules.
+//! Handles module certificate creation and persistence for `IoT` Edge modules.
 
 #![cfg_attr(feature = "mock", allow(dead_code, unused_imports))]
 
@@ -49,11 +49,12 @@ impl CertificateService {
     /// # Returns
     /// Result indicating success or failure
     #[cfg(feature = "mock")]
+    #[allow(clippy::unused_async)] // signature must match non-mock async version
     pub async fn create_module_certificate(_payload: CreateCertPayload) -> Result<()> {
         Ok(())
     }
 
-    /// Create a module certificate from IoT Edge workload API
+    /// Create a module certificate from `IoT` Edge workload API
     ///
     /// # Arguments
     /// * `service_client` - Device service client for retrieving IP address

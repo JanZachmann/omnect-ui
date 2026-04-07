@@ -1,10 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::types::*;
+use crate::types::{
+    AuthToken, HealthcheckInfo, UpdateManifest, WifiAvailability, WifiSavedNetworksResponse,
+    WifiScanResultsResponse, WifiStatusResponse,
+};
 
 /// Authentication events
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum AuthEvent {
     Login {
         password: String,
@@ -106,7 +109,7 @@ pub enum WebSocketEvent {
     Disconnected,
 }
 
-/// WiFi management events
+/// `WiFi` management events
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum WifiEvent {
     // User actions
@@ -144,41 +147,37 @@ pub enum WifiEvent {
     ForgetNetworkResponse(Result<(), String>),
 }
 
-/// Custom Debug for WifiEvent to redact password
+/// Custom Debug for `WifiEvent` to redact password
 impl fmt::Debug for WifiEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            WifiEvent::Connect { ssid, .. } => f
+            Self::Connect { ssid, .. } => f
                 .debug_struct("Connect")
                 .field("ssid", ssid)
                 .field("password", &"<redacted>")
                 .finish(),
-            WifiEvent::CheckAvailability => write!(f, "CheckAvailability"),
-            WifiEvent::Scan => write!(f, "Scan"),
-            WifiEvent::Disconnect => write!(f, "Disconnect"),
-            WifiEvent::GetStatus => write!(f, "GetStatus"),
-            WifiEvent::GetSavedNetworks => write!(f, "GetSavedNetworks"),
-            WifiEvent::ForgetNetwork { ssid } => {
+            Self::CheckAvailability => write!(f, "CheckAvailability"),
+            Self::Scan => write!(f, "Scan"),
+            Self::Disconnect => write!(f, "Disconnect"),
+            Self::GetStatus => write!(f, "GetStatus"),
+            Self::GetSavedNetworks => write!(f, "GetSavedNetworks"),
+            Self::ForgetNetwork { ssid } => {
                 f.debug_struct("ForgetNetwork").field("ssid", ssid).finish()
             }
-            WifiEvent::ScanPollTick => write!(f, "ScanPollTick"),
-            WifiEvent::ConnectPollTick => write!(f, "ConnectPollTick"),
-            WifiEvent::CheckAvailabilityResponse(r) => {
+            Self::ScanPollTick => write!(f, "ScanPollTick"),
+            Self::ConnectPollTick => write!(f, "ConnectPollTick"),
+            Self::CheckAvailabilityResponse(r) => {
                 f.debug_tuple("CheckAvailabilityResponse").field(r).finish()
             }
-            WifiEvent::ScanResponse(r) => f.debug_tuple("ScanResponse").field(r).finish(),
-            WifiEvent::ScanResultsResponse(r) => {
-                f.debug_tuple("ScanResultsResponse").field(r).finish()
-            }
-            WifiEvent::ConnectResponse(r) => f.debug_tuple("ConnectResponse").field(r).finish(),
-            WifiEvent::DisconnectResponse(r) => {
-                f.debug_tuple("DisconnectResponse").field(r).finish()
-            }
-            WifiEvent::StatusResponse(r) => f.debug_tuple("StatusResponse").field(r).finish(),
-            WifiEvent::SavedNetworksResponse(r) => {
+            Self::ScanResponse(r) => f.debug_tuple("ScanResponse").field(r).finish(),
+            Self::ScanResultsResponse(r) => f.debug_tuple("ScanResultsResponse").field(r).finish(),
+            Self::ConnectResponse(r) => f.debug_tuple("ConnectResponse").field(r).finish(),
+            Self::DisconnectResponse(r) => f.debug_tuple("DisconnectResponse").field(r).finish(),
+            Self::StatusResponse(r) => f.debug_tuple("StatusResponse").field(r).finish(),
+            Self::SavedNetworksResponse(r) => {
                 f.debug_tuple("SavedNetworksResponse").field(r).finish()
             }
-            WifiEvent::ForgetNetworkResponse(r) => {
+            Self::ForgetNetworkResponse(r) => {
                 f.debug_tuple("ForgetNetworkResponse").field(r).finish()
             }
         }
@@ -200,7 +199,7 @@ pub enum UiEvent {
 }
 
 /// Main event enum - wraps domain events
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Event {
     Initialize,
     Auth(AuthEvent),
@@ -210,24 +209,24 @@ pub enum Event {
     Wifi(WifiEvent),
 }
 
-/// Custom Debug implementation for AuthEvent to redact sensitive data
+/// Custom Debug implementation for `AuthEvent` to redact sensitive data
 impl fmt::Debug for AuthEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AuthEvent::Login { .. } => f
+            Self::Login { .. } => f
                 .debug_struct("Login")
                 .field("password", &"<redacted>")
                 .finish(),
-            AuthEvent::SetPassword { .. } => f
+            Self::SetPassword { .. } => f
                 .debug_struct("SetPassword")
                 .field("password", &"<redacted>")
                 .finish(),
-            AuthEvent::UpdatePassword { .. } => f
+            Self::UpdatePassword { .. } => f
                 .debug_struct("UpdatePassword")
                 .field("current_password", &"<redacted>")
                 .field("password", &"<redacted>")
                 .finish(),
-            AuthEvent::LoginResponse(result) => match result {
+            Self::LoginResponse(result) => match result {
                 Ok(_) => f
                     .debug_tuple("LoginResponse")
                     .field(&"Ok(<redacted token>)")
@@ -237,11 +236,11 @@ impl fmt::Debug for AuthEvent {
                     .field(&format!("Err({e})"))
                     .finish(),
             },
-            AuthEvent::Logout => write!(f, "Logout"),
-            AuthEvent::CheckRequiresPasswordSet => write!(f, "CheckRequiresPasswordSet"),
-            AuthEvent::RestoreSession(_) => write!(f, "RestoreSession(<redacted token>)"),
-            AuthEvent::LogoutResponse(r) => f.debug_tuple("LogoutResponse").field(r).finish(),
-            AuthEvent::SetPasswordResponse(result) => match result {
+            Self::Logout => write!(f, "Logout"),
+            Self::CheckRequiresPasswordSet => write!(f, "CheckRequiresPasswordSet"),
+            Self::RestoreSession(_) => write!(f, "RestoreSession(<redacted token>)"),
+            Self::LogoutResponse(r) => f.debug_tuple("LogoutResponse").field(r).finish(),
+            Self::SetPasswordResponse(result) => match result {
                 Ok(_) => f
                     .debug_tuple("SetPasswordResponse")
                     .field(&"Ok(<redacted token>)")
@@ -251,10 +250,10 @@ impl fmt::Debug for AuthEvent {
                     .field(&format!("Err({e})"))
                     .finish(),
             },
-            AuthEvent::UpdatePasswordResponse(r) => {
+            Self::UpdatePasswordResponse(r) => {
                 f.debug_tuple("UpdatePasswordResponse").field(r).finish()
             }
-            AuthEvent::CheckRequiresPasswordSetResponse(r) => f
+            Self::CheckRequiresPasswordSetResponse(r) => f
                 .debug_tuple("CheckRequiresPasswordSetResponse")
                 .field(r)
                 .finish(),
@@ -266,12 +265,12 @@ impl fmt::Debug for AuthEvent {
 impl fmt::Debug for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Initialize => write!(f, "Initialize"),
-            Event::Auth(e) => write!(f, "Auth({e:?})"),
-            Event::Device(e) => write!(f, "Device({e:?})"),
-            Event::WebSocket(e) => write!(f, "WebSocket({e:?})"),
-            Event::Ui(e) => write!(f, "Ui({e:?})"),
-            Event::Wifi(e) => write!(f, "Wifi({e:?})"),
+            Self::Initialize => write!(f, "Initialize"),
+            Self::Auth(e) => write!(f, "Auth({e:?})"),
+            Self::Device(e) => write!(f, "Device({e:?})"),
+            Self::WebSocket(e) => write!(f, "WebSocket({e:?})"),
+            Self::Ui(e) => write!(f, "Ui({e:?})"),
+            Self::Wifi(e) => write!(f, "Wifi({e:?})"),
         }
     }
 }

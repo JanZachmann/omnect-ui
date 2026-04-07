@@ -33,10 +33,11 @@ struct TokenManagerInner {
 }
 
 impl TokenManager {
-    /// Create a new TokenManager
+    /// Create a new `TokenManager`
     ///
     /// # Arguments
     /// * `secret` - Secret key for HMAC-SHA256 signing
+    #[must_use]
     pub fn new(secret: &str) -> Self {
         Self {
             inner: Arc::new(TokenManagerInner {
@@ -74,6 +75,7 @@ impl TokenManager {
     /// - Required subject claim
     ///
     /// Returns true if token is valid, false otherwise
+    #[must_use]
     pub fn verify_token(&self, token: &str) -> bool {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.leeway = TOKEN_TIME_TOLERANCE_SECS;

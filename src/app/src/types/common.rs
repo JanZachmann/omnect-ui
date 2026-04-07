@@ -26,7 +26,7 @@ pub struct OnlineStatus {
     pub iothub: bool,
 }
 
-/// TimeoutDuration type for timeouts
+/// `TimeoutDuration` type for timeouts
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeoutDuration {
@@ -67,19 +67,22 @@ impl OverlaySpinnerState {
     }
 
     /// Builder pattern: add optional text to the spinner
+    #[must_use]
     pub fn with_text(mut self, text: impl Into<String>) -> Self {
         self.text = Some(text.into());
         self
     }
 
     /// Builder pattern: add optional progress to the spinner
-    pub fn with_progress(mut self, progress: u8) -> Self {
+    #[must_use]
+    pub const fn with_progress(mut self, progress: u8) -> Self {
         self.progress = Some(progress);
         self
     }
 
     /// Builder pattern: add optional countdown to the spinner
-    pub fn with_countdown(mut self, seconds: u32) -> Self {
+    #[must_use]
+    pub const fn with_countdown(mut self, seconds: u32) -> Self {
         self.countdown_seconds = Some(seconds);
         self
     }
@@ -90,38 +93,39 @@ impl OverlaySpinnerState {
     }
 
     /// Update the optional progress
-    pub fn set_progress(&mut self, progress: u8) {
+    pub const fn set_progress(&mut self, progress: u8) {
         self.progress = Some(progress);
     }
 
     /// Update the optional countdown
-    pub fn set_countdown(&mut self, seconds: u32) {
+    pub const fn set_countdown(&mut self, seconds: u32) {
         self.countdown_seconds = Some(seconds);
     }
 
     /// Mark the spinner as timed out
-    pub fn set_timed_out(&mut self) {
+    pub const fn set_timed_out(&mut self) {
         self.timed_out = true;
     }
 
     /// Reset timed out state (back to loading/spinning)
-    pub fn set_loading(&mut self) {
+    pub const fn set_loading(&mut self) {
         self.timed_out = false;
         self.countdown_seconds = None;
     }
 
     /// Show the overlay spinner
-    pub fn show(&mut self) {
+    pub const fn show(&mut self) {
         self.overlay = true;
     }
 
     /// Hide the overlay spinner
-    pub fn hide(&mut self) {
+    pub const fn hide(&mut self) {
         self.overlay = false;
     }
 
     /// Check if the overlay is currently visible
-    pub fn is_visible(&self) -> bool {
+    #[must_use]
+    pub const fn is_visible(&self) -> bool {
         self.overlay
     }
 
@@ -131,37 +135,43 @@ impl OverlaySpinnerState {
     }
 
     /// Get the overlay visibility state
-    pub fn overlay(&self) -> bool {
+    #[must_use]
+    pub const fn overlay(&self) -> bool {
         self.overlay
     }
 
     /// Get the title
+    #[must_use]
     pub fn title(&self) -> &str {
         &self.title
     }
 
     /// Get the optional text
+    #[must_use]
     pub fn text(&self) -> Option<&str> {
         self.text.as_deref()
     }
 
     /// Get the optional progress
-    pub fn progress(&self) -> Option<u8> {
+    #[must_use]
+    pub const fn progress(&self) -> Option<u8> {
         self.progress
     }
 
     /// Check if the spinner has timed out
-    pub fn timed_out(&self) -> bool {
+    #[must_use]
+    pub const fn timed_out(&self) -> bool {
         self.timed_out
     }
 
     /// Get the optional countdown seconds
-    pub fn countdown_seconds(&self) -> Option<u32> {
+    #[must_use]
+    pub const fn countdown_seconds(&self) -> Option<u32> {
         self.countdown_seconds
     }
 
     /// Decrement countdown by one second (saturating at zero)
-    pub fn decrement_countdown(&mut self) {
+    pub const fn decrement_countdown(&mut self) {
         if let Some(s) = self.countdown_seconds {
             self.countdown_seconds = Some(s.saturating_sub(1));
         }

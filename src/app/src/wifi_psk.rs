@@ -7,6 +7,7 @@ const WPA_PSK_KEY_LENGTH: usize = 32;
 /// Compute WPA PSK from password and SSID per IEEE 802.11i.
 ///
 /// Uses PBKDF2(HMAC-SHA1, password, SSID, 4096, 256 bits) → 64-char hex.
+#[must_use]
 pub fn compute_wpa_psk(password: &str, ssid: &str) -> String {
     let mut key = [0u8; WPA_PSK_KEY_LENGTH];
     pbkdf2_hmac::<Sha1>(

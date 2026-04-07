@@ -7,7 +7,7 @@ use crate::{
     events::{Event, WifiEvent},
     model::Model,
     types::{
-        WifiAvailability, WifiConnectionState, WifiConnectionStatus, WifiNetwork, WifiSavedNetwork,
+        WifiAvailability, WifiConnectionState, WifiConnectionStatus, WifiNetwork,
         WifiSavedNetworksResponse, WifiScanResultsResponse, WifiScanState, WifiState,
         WifiStatusResponse,
     },
@@ -18,9 +18,9 @@ use crate::{
 const SCAN_POLL_MAX_ATTEMPTS: u32 = 60;
 /// Max connect poll attempts (1s each → 30s total)
 const CONNECT_POLL_MAX_ATTEMPTS: u32 = 30;
-/// WiFi scan poll interval
+/// `WiFi` scan poll interval
 const WIFI_SCAN_POLL_INTERVAL_MS: u64 = 500;
-/// WiFi connect poll interval
+/// `WiFi` connect poll interval
 const WIFI_CONNECT_POLL_INTERVAL_MS: u64 = 1000;
 
 /// Helper to get mutable reference to the Ready variant fields
@@ -199,12 +199,7 @@ pub fn handle(event: WifiEvent, model: &mut Model) -> Command<Effect, Event> {
                                         rssi: net.rssi,
                                     });
                                 if net.rssi > entry.rssi {
-                                    *entry = WifiNetwork {
-                                        ssid: net.ssid,
-                                        mac: net.mac,
-                                        ch: net.ch,
-                                        rssi: net.rssi,
-                                    };
+                                    *entry = net;
                                 }
                             }
                             // Sort by RSSI descending (strongest first)
@@ -284,17 +279,11 @@ pub fn handle(event: WifiEvent, model: &mut Model) -> Command<Effect, Event> {
                 status.state = WifiConnectionState::Connecting;
                 *connect_poll = 0;
 
-                #[derive(serde::Serialize)]
-                struct ConnectBody {
-                    ssid: String,
-                    psk: String,
-                }
-                let body = ConnectBody { ssid, psk };
                 auth_post!(
                     Wifi, WifiEvent, model,
                     "/wifi/connect",
                     ConnectResponse, "WiFi connect",
-                    body_json: &body
+                    body_json: &serde_json::json!({ "ssid": ssid, "psk": psk })
                 )
             })
         }
@@ -460,14 +449,7 @@ pub fn handle(event: WifiEvent, model: &mut Model) -> Command<Effect, Event> {
                      saved,
                      _scan_poll,
                      _connect_poll| {
-                        *saved = response
-                            .networks
-                            .into_iter()
-                            .map(|n| WifiSavedNetwork {
-                                ssid: n.ssid,
-                                flags: n.flags,
-                            })
-                            .collect();
+                        *saved = response.networks.into_iter().collect();
                         render()
                     }
                 )
@@ -479,16 +461,11 @@ pub fn handle(event: WifiEvent, model: &mut Model) -> Command<Effect, Event> {
         },
 
         WifiEvent::ForgetNetwork { ssid } => {
-            #[derive(serde::Serialize)]
-            struct ForgetBody {
-                ssid: String,
-            }
-            let body = ForgetBody { ssid };
             auth_post!(
                 Wifi, WifiEvent, model,
                 "/wifi/networks/forget",
                 ForgetNetworkResponse, "WiFi forget network",
-                body_json: &body
+                body_json: &serde_json::json!({ "ssid": ssid })
             )
         }
 
@@ -527,7 +504,7 @@ fn schedule_connect_poll() -> Command<Effect, Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::WifiAvailability;
+    use crate::types::{WifiAvailability, WifiSavedNetwork};
 
     fn model_with_ready_state() -> Model {
         Model {

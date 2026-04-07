@@ -91,7 +91,7 @@ pub fn handle_reconnection_timeout(model: &mut Model) -> Command<Effect, Event> 
         "Device did not come back online. You may need to re-accept the security certificate.";
 
     model.device_operation_state = DeviceOperationState::ReconnectionFailed {
-        operation: operation.clone(),
+        operation,
         reason: timeout_msg.to_string(),
     };
 
@@ -103,13 +103,14 @@ pub fn handle_reconnection_timeout(model: &mut Model) -> Command<Effect, Event> 
 }
 
 /// Handle healthcheck response - manages reconnection and network change state machines
+#[allow(clippy::needless_pass_by_value)]
 pub fn handle_healthcheck_response(
     result: Result<crate::types::HealthcheckInfo, String>,
     model: &mut Model,
 ) -> Command<Effect, Event> {
     if let Ok(info) = &result {
-        model.healthcheck = Some(info.clone());
         update_version_info(info, model);
+        model.healthcheck = Some(info.clone());
     }
     advance_device_operation_state(&result, model);
     advance_network_change_state(&result, model);

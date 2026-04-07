@@ -20,11 +20,11 @@ pub struct AppConfig {
     /// TLS certificate configuration
     pub certificate: CertificateConfig,
 
-    /// IoT Edge workload API configuration
+    /// `IoT` Edge workload API configuration
     #[cfg_attr(feature = "mock", allow(dead_code))]
     pub iot_edge: IoTEdgeConfig,
 
-    /// WiFi commissioning service configuration
+    /// `WiFi` commissioning service configuration
     pub wifi: WifiConfig,
 
     /// Path configuration
@@ -104,7 +104,7 @@ impl AppConfig {
 
     /// Internal function to load and validate all configuration from environment variables
     ///
-    /// This should only be called once via get(). It validates all
+    /// This should only be called once via `get()`. It validates all
     /// required environment variables and returns an error if any are missing
     /// or invalid.
     fn load_internal() -> Result<Self> {
@@ -115,10 +115,10 @@ impl AppConfig {
         );
 
         let ui = UiConfig::load()?;
-        let publish = PublishConfig::load()?;
+        let publish = PublishConfig::load();
         let keycloak = KeycloakConfig::load()?;
-        let device_service = DeviceServiceConfig::load()?;
-        let certificate = CertificateConfig::load()?;
+        let device_service = DeviceServiceConfig::load();
+        let certificate = CertificateConfig::load();
         let iot_edge = IoTEdgeConfig::load()?;
         let wifi = WifiConfig::load();
         let paths = PathConfig::load()?;
@@ -150,7 +150,7 @@ impl UiConfig {
 }
 
 impl PublishConfig {
-    fn load() -> Result<Self> {
+    fn load() -> Self {
         let port = env::var("PUBLISH_PORT").unwrap_or_else(|_| "8000".to_string());
         // Generate a unique token for this instance to protect the internal publish endpoint
         let api_key = Uuid::new_v4().to_string();
@@ -169,7 +169,7 @@ impl PublishConfig {
             ],
         };
 
-        Ok(Self { api_key, endpoint })
+        Self { api_key, endpoint }
     }
 }
 
@@ -187,17 +187,17 @@ impl KeycloakConfig {
 }
 
 impl DeviceServiceConfig {
-    fn load() -> Result<Self> {
+    fn load() -> Self {
         let socket_path = env::var("DEVICE_SERVICE_SOCKET_PATH")
             .unwrap_or_else(|_| "/omnect-device-service/api.sock".to_string())
             .into();
 
-        Ok(Self { socket_path })
+        Self { socket_path }
     }
 }
 
 impl CertificateConfig {
-    fn load() -> Result<Self> {
+    fn load() -> Self {
         let cert_path = env::var("CERT_PATH")
             .unwrap_or_else(|_| "/cert/cert.pem".to_string())
             .into();
@@ -206,31 +206,30 @@ impl CertificateConfig {
             .unwrap_or_else(|_| "/cert/key.pem".to_string())
             .into();
 
-        Ok(Self {
+        Self {
             cert_path,
             key_path,
-        })
+        }
     }
 }
 
 impl IoTEdgeConfig {
+    #[cfg_attr(
+        any(test, feature = "mock"),
+        allow(clippy::unnecessary_wraps) // mock branch provides defaults; non-mock uses ?
+    )]
     fn load() -> Result<Self> {
         #[cfg(any(test, feature = "mock"))]
         {
-            let module_id =
-                env::var("IOTEDGE_MODULEID").unwrap_or_else(|_| "test-module".to_string());
-            let module_generation_id =
-                env::var("IOTEDGE_MODULEGENERATIONID").unwrap_or_else(|_| "1".to_string());
-            let api_version =
-                env::var("IOTEDGE_APIVERSION").unwrap_or_else(|_| "2021-12-07".to_string());
-            let workload_uri = env::var("IOTEDGE_WORKLOADURI")
-                .unwrap_or_else(|_| "unix:///var/run/iotedge/workload.sock".to_string());
-
             Ok(Self {
-                module_id,
-                module_generation_id,
-                api_version,
-                workload_uri,
+                module_id: env::var("IOTEDGE_MODULEID")
+                    .unwrap_or_else(|_| "test-module".to_string()),
+                module_generation_id: env::var("IOTEDGE_MODULEGENERATIONID")
+                    .unwrap_or_else(|_| "1".to_string()),
+                api_version: env::var("IOTEDGE_APIVERSION")
+                    .unwrap_or_else(|_| "2021-12-07".to_string()),
+                workload_uri: env::var("IOTEDGE_WORKLOADURI")
+                    .unwrap_or_else(|_| "unix:///var/run/iotedge/workload.sock".to_string()),
             })
         }
 

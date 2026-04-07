@@ -42,6 +42,7 @@ impl FirmwareService {
     ///
     /// # Returns
     /// Result indicating success or failure
+    #[allow(clippy::future_not_send)]
     pub async fn receive_firmware(mut field: Field) -> Result<()> {
         const WRITE_BUFFER_SIZE: usize = 512 * 1024;
         const FLUSH_INTERVAL_BYTES: usize = 5 * 1024 * 1024;
@@ -77,10 +78,7 @@ impl FirmwareService {
         loop {
             // Check total timeout
             if start.elapsed().as_secs() > TOTAL_TIMEOUT_SECS {
-                anyhow::bail!(
-                    "upload exceeded maximum duration of {} seconds",
-                    TOTAL_TIMEOUT_SECS
-                );
+                anyhow::bail!("upload exceeded maximum duration of {TOTAL_TIMEOUT_SECS} seconds");
             }
 
             // Wait for next chunk with timeout
@@ -90,8 +88,7 @@ impl FirmwareService {
             )
             .await
             .context(format!(
-                "chunk timeout: no data received for {} seconds",
-                CHUNK_TIMEOUT_SECS
+                "chunk timeout: no data received for {CHUNK_TIMEOUT_SECS} seconds"
             ))?;
 
             // Check if stream is complete
@@ -127,10 +124,9 @@ impl FirmwareService {
         // Final flush
         file.flush().await.context("failed to flush update file")?;
 
-        info!(
-            "firmware upload completed: {:.2} MB",
-            total_bytes as f64 / 1024.0 / 1024.0
-        );
+        #[allow(clippy::cast_precision_loss)]
+        let size_mb = total_bytes as f64 / 1024.0 / 1024.0;
+        info!("firmware upload completed: {size_mb:.2} MB");
 
         Ok(())
     }
@@ -142,6 +138,7 @@ impl FirmwareService {
     ///
     /// # Returns
     /// Result with the response data from the device service
+    #[allow(clippy::future_not_send)]
     pub async fn load_update<SC: DeviceServiceClient>(service_client: &SC) -> Result<String> {
         use crate::omnect_device_service_client::LoadUpdate;
 
@@ -160,6 +157,7 @@ impl FirmwareService {
     ///
     /// # Returns
     /// Result indicating success or failure
+    #[allow(clippy::future_not_send)]
     pub async fn run_update<ServiceClient: DeviceServiceClient>(
         service_client: &ServiceClient,
         run_update: crate::omnect_device_service_client::RunUpdate,

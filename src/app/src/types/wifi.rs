@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// WiFi service availability info returned by the backend
+/// `WiFi` service availability info returned by the backend
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum WifiAvailability {
@@ -15,7 +15,7 @@ pub enum WifiAvailability {
     },
 }
 
-/// A WiFi network discovered during scanning
+/// A `WiFi` network discovered during scanning
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WifiNetwork {
@@ -25,7 +25,7 @@ pub struct WifiNetwork {
     pub rssi: i16,
 }
 
-/// A saved WiFi network from wpa_supplicant
+/// A saved `WiFi` network from `wpa_supplicant`
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WifiSavedNetwork {
@@ -33,7 +33,7 @@ pub struct WifiSavedNetwork {
     pub flags: String,
 }
 
-/// WiFi connection status from the service
+/// `WiFi` connection status from the service
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WifiConnectionStatus {
@@ -62,7 +62,7 @@ pub enum WifiConnectionState {
     Failed(String),
 }
 
-/// Top-level WiFi state machine exposed in the ViewModel
+/// Top-level `WiFi` state machine exposed in the `ViewModel`
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum WifiState {

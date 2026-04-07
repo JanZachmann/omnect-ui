@@ -17,8 +17,8 @@ name = "omnect_ui_core"
 [features]
 typegen = ["crux_core/typegen", "crux_http/typegen", "crux_time/typegen"]
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("facet_typegen"))'] }
+[lints]
+workspace = true
 
 [dependencies]
 base64 = { version = "0.22", default-features = false, features = ["alloc"] }

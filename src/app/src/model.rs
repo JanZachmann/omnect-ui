@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use crate::types::*;
+use crate::types::{
+    DeviceOperationState, FactoryReset, HealthcheckInfo, NetworkChangeState, NetworkFormState,
+    NetworkStatus, OnlineStatus, OverlaySpinnerState, SystemInfo, TimeoutSettings, Timeouts,
+    UpdateManifest, UpdateValidationStatus, UploadState, WifiState,
+};
 
 /// Trait for types that can handle error messages
 ///
@@ -10,7 +14,7 @@ pub trait ModelErrorHandler {
 }
 
 /// Application Model - the complete state
-/// Also serves as the ViewModel when serialized (auth_token is excluded)
+/// Also serves as the `ViewModel` when serialized (`auth_token` is excluded)
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Model {
@@ -86,7 +90,7 @@ impl Model {
         self.auth_token = None;
     }
 
-    /// Start a loading operation (sets is_loading=true, clears error)
+    /// Start a loading operation (sets `is_loading=true`, clears error)
     pub fn start_loading(&mut self) {
         self.is_loading = true;
         self.error_message = None;
@@ -121,7 +125,7 @@ impl Model {
         self.error_message = None;
     }
 
-    /// Update current connection adapter based on browser_hostname and network_status
+    /// Update current connection adapter based on `browser_hostname` and `network_status`
     pub fn update_current_connection_adapter(&mut self) {
         self.current_connection_adapter = self
             .network_status
@@ -131,16 +135,16 @@ impl Model {
     }
 
     /// Check if the given adapter name matches the current connection adapter
+    #[must_use]
     pub fn is_current_adapter(&self, name: &str) -> bool {
         self.current_connection_adapter
             .as_ref()
-            .map(|current| current == name)
-            .unwrap_or(false)
+            .is_some_and(|current| current == name)
     }
 }
 
 impl ModelErrorHandler for Model {
     fn set_error(&mut self, error: String) {
-        Model::set_error(self, error)
+        Self::set_error(self, error);
     }
 }

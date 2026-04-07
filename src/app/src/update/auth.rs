@@ -40,7 +40,7 @@ pub fn handle(event: AuthEvent, model: &mut Model) -> Command<Effect, Event> {
         }
 
         AuthEvent::LogoutResponse(result) => handle_response!(model, result, {
-            on_success: |model, _| {
+            on_success: |model, ()| {
                 model.invalidate_session();
             },
         }),
@@ -82,7 +82,7 @@ pub fn handle(event: AuthEvent, model: &mut Model) -> Command<Effect, Event> {
         }
 
         AuthEvent::UpdatePasswordResponse(result) => handle_response!(model, result, {
-            on_success: |model, _| {},
+            on_success: |model, ()| {},
             success_message: "Password updated successfully",
         }),
 
@@ -107,7 +107,7 @@ pub fn handle(event: AuthEvent, model: &mut Model) -> Command<Effect, Event> {
     }
 }
 
-/// After successful authentication, fetch WiFi data if WiFi is available
+/// After successful authentication, fetch `WiFi` data if `WiFi` is available
 fn post_auth_commands(model: &mut Model) -> Command<Effect, Event> {
     if matches!(model.wifi_state, WifiState::Ready { .. }) {
         Command::all([

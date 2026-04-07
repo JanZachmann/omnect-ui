@@ -115,7 +115,8 @@ where
         }
     }
 
-    /// Build the request into a Command RequestBuilder
+    /// Build the request into a Command `RequestBuilder`
+    #[must_use]
     pub fn build(
         self,
     ) -> command::RequestBuilder<Effect, Event, impl Future<Output = WebSocketOutput>> {

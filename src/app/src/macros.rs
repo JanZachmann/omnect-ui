@@ -118,7 +118,7 @@ macro_rules! unauth_post {
                 builder.build().then_send(|result| {
                     let event_result: Result<$response_type, String> = match result {
                         Ok(mut response) => $crate::parse_json_response($action, &mut response),
-                        Err(e) => Err($crate::map_http_error($action, e)),
+                        Err(e) => Err($crate::map_http_error($action, &e)),
                     };
                     $crate::events::Event::$domain($crate::events::$domain_event::$response_event(
                         event_result,
@@ -143,7 +143,7 @@ macro_rules! unauth_post {
                 builder.build().then_send(|result| {
                     let event_result = match result {
                         Ok(mut response) => $crate::check_response_status($action, &mut response),
-                        Err(e) => Err($crate::map_http_error($action, e)),
+                        Err(e) => Err($crate::map_http_error($action, &e)),
                     };
                     $crate::events::Event::$domain($crate::events::$domain_event::$response_event(
                         event_result,
@@ -170,7 +170,7 @@ macro_rules! unauth_post {
                         Ok(mut response) => {
                             $crate::extract_string_response($action, &mut response).map($mapper)
                         }
-                        Err(e) => Err($crate::map_http_error($action, e)),
+                        Err(e) => Err($crate::map_http_error($action, &e)),
                     };
                     $crate::events::Event::$domain($crate::events::$domain_event::$response_event(
                         event_result,
@@ -193,7 +193,7 @@ macro_rules! unauth_post {
                 .then_send(|result| {
                     let event_result: Result<$response_type, String> = match result {
                         Ok(mut response) => $crate::parse_json_response($action, &mut response),
-                        Err(e) => Err($crate::map_http_error($action, e)),
+                        Err(e) => Err($crate::map_http_error($action, &e)),
                     };
                     $crate::events::Event::$domain($crate::events::$domain_event::$response_event(
                         event_result,
@@ -232,7 +232,7 @@ macro_rules! auth_post_basic {
                         Ok(mut response) => {
                             $crate::extract_string_response($action, &mut response).map($mapper)
                         }
-                        Err(e) => Err($crate::map_http_error($action, e)),
+                        Err(e) => Err($crate::map_http_error($action, &e)),
                     };
                     $crate::events::Event::$domain($crate::events::$domain_event::$response_event(
                         event_result,

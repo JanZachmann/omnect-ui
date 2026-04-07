@@ -15,6 +15,7 @@ pub struct MarkerFile {
 }
 
 impl MarkerFile {
+    #[must_use]
     pub const fn new(path: &'static str, label: &'static str) -> Self {
         Self { path, label }
     }
@@ -23,6 +24,7 @@ impl MarkerFile {
         Path::new(self.path)
     }
 
+    #[must_use]
     pub fn exists(&self) -> bool {
         self.path().exists()
     }
@@ -40,7 +42,7 @@ impl MarkerFile {
         }
     }
 
-    /// Clear the marker file. NotFound is silently ignored.
+    /// Clear the marker file. `NotFound` is silently ignored.
     pub fn clear(&self) {
         match fs::remove_file(self.path()) {
             Ok(()) => info!("Cleared {} marker", self.label),

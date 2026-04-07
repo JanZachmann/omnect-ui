@@ -16,7 +16,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{env, fmt::Debug, path::PathBuf, sync::OnceLock};
 use trait_variant::make;
 
-#[derive(Clone, Debug, Default, Deserialize_repr, PartialEq, Serialize_repr)]
+#[derive(Clone, Debug, Default, Deserialize_repr, PartialEq, Eq, Serialize_repr)]
 #[repr(u8)]
 pub enum FactoryResetMode {
     #[default]
@@ -176,7 +176,7 @@ impl OmnectDeviceServiceClient {
                 .to_string_lossy(),
         )?;
 
-        Ok(OmnectDeviceServiceClient {
+        Ok(Self {
             client,
             has_publish_endpoint: false,
         })
@@ -190,6 +190,7 @@ impl OmnectDeviceServiceClient {
         })
     }
 
+    #[allow(clippy::unused_self)]
     fn build_url(&self, path: &str) -> String {
         // Normalize path to always start with a single "/"
         let normalized_path = path.trim_start_matches('/');

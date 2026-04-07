@@ -15,7 +15,7 @@ pub struct AuthorizationService;
 impl AuthorizationService {
     /// Validate SSO token and check user claims for authorization
     ///
-    /// Uses the tenant configuration from AppConfig.
+    /// Uses the tenant configuration from `AppConfig`.
     ///
     /// # Arguments
     /// * `single_sign_on` - Single sign-on provider for token verification
@@ -26,9 +26,10 @@ impl AuthorizationService {
     /// Result indicating success or authorization failure
     ///
     /// # Authorization Rules
-    /// - User must have tenant in their tenant_list
-    /// - FleetAdministrator role grants full access
-    /// - FleetOperator role requires fleet_id in fleet_list
+    /// - User must have tenant in their `tenant_list`
+    /// - `FleetAdministrator` role grants full access
+    /// - `FleetOperator` role requires `fleet_id` in `fleet_list`
+    #[allow(clippy::future_not_send)]
     pub async fn validate_token_and_claims<ServiceClient, SingleSignOn>(
         single_sign_on: &SingleSignOn,
         service_client: &ServiceClient,
@@ -55,6 +56,7 @@ impl AuthorizationService {
         Ok(())
     }
 
+    #[allow(clippy::future_not_send)]
     async fn validate_role<ServiceClient: DeviceServiceClient>(
         claims: &TokenClaims,
         service_client: &ServiceClient,

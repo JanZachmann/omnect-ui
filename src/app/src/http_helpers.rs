@@ -28,6 +28,7 @@ pub const BASE_URL: &str = "https://relative";
 /// let url = build_url("/api/device/reboot");
 /// assert_eq!(url, "https://relative/api/device/reboot");
 /// ```
+#[must_use]
 pub fn build_url(endpoint: &str) -> String {
     format!("{BASE_URL}{endpoint}")
 }
@@ -35,6 +36,7 @@ pub fn build_url(endpoint: &str) -> String {
 /// Validates HTTP response.
 ///
 /// Returns `true` if the response status is 2xx.
+#[must_use]
 pub fn is_response_success(response: &Response<Vec<u8>>) -> bool {
     response.status().is_success()
 }
@@ -42,7 +44,7 @@ pub fn is_response_success(response: &Response<Vec<u8>>) -> bool {
 /// Extracts error message from successful HTTP response.
 ///
 /// This is used when an API returns a 2xx status but indicates failure in the body,
-/// or when manually processing non-2xx responses that were not caught as Errors by crux_http.
+/// or when manually processing non-2xx responses that were not caught as Errors by `crux_http`.
 pub fn extract_error_message(action: &str, response: &mut Response<Vec<u8>>) -> String {
     let status = response.status();
     let status_str = status.to_string();
@@ -121,9 +123,12 @@ pub fn extract_string_response(
     }
 
     match response.take_body() {
-        Some(bytes) => {
-            String::from_utf8(bytes).map_err(|_| format!("{action}: Invalid UTF-8 in response"))
-        }
+        Some(bytes) => String::from_utf8(bytes).map_err(|e| {
+            format!(
+                "{action}: Invalid UTF-8 in response at byte {}",
+                e.utf8_error().valid_up_to()
+            )
+        }),
         None => Err(format!("{action}: Empty response body")),
     }
 }
@@ -135,7 +140,7 @@ pub fn process_status_response(
 ) -> Result<(), String> {
     match result {
         Ok(mut response) => check_response_status(action, &mut response),
-        Err(e) => Err(map_http_error(action, e)),
+        Err(e) => Err(map_http_error(action, &e)),
     }
 }
 
@@ -146,15 +151,15 @@ pub fn process_json_response<T: serde::de::DeserializeOwned>(
 ) -> Result<T, String> {
     match result {
         Ok(mut response) => parse_json_response(action, &mut response),
-        Err(e) => Err(map_http_error(action, e)),
+        Err(e) => Err(map_http_error(action, &e)),
     }
 }
 
-pub fn map_http_error(action: &str, e: HttpError) -> String {
+#[must_use]
+pub fn map_http_error(action: &str, e: &HttpError) -> String {
     match e {
         HttpError::Http {
-            body: Some(ref body),
-            ..
+            body: Some(body), ..
         } => match String::from_utf8(body.clone()) {
             Ok(msg) => msg,
             Err(_) => format!("{action} failed: {e}"),

@@ -12,7 +12,7 @@ use super::reconnection::schedule_reconnection_poll;
 const RECONNECTION_COUNTDOWN_INTERVAL_MS: u64 = 1000;
 
 pub(super) fn schedule_reconnection_timeout(secs: u32) -> Command<Effect, Event> {
-    let (timer, handle) = TimeCmd::notify_after(std::time::Duration::from_secs(secs as u64));
+    let (timer, handle) = TimeCmd::notify_after(std::time::Duration::from_secs(u64::from(secs)));
     std::mem::forget(handle);
     timer.then_send(|_| Event::Device(DeviceEvent::ReconnectionTimeout))
 }

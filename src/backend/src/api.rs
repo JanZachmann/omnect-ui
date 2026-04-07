@@ -1,3 +1,10 @@
+// Actix handler signatures require async and use !Send futures by design
+#![allow(
+    clippy::future_not_send,
+    clippy::needless_pass_by_value,
+    clippy::unused_async
+)]
+
 use crate::{
     config::AppConfig,
     http_client::handle_service_result,
@@ -42,7 +49,7 @@ where
     SingleSignOn: SingleSignOnProvider,
 {
     pub async fn new(service_client: ServiceClient, single_sign_on: SingleSignOn) -> Result<Self> {
-        Ok(Api {
+        Ok(Self {
             service_client,
             single_sign_on,
         })
@@ -244,7 +251,9 @@ where
             return HttpResponse::Unauthorized().finish();
         }
 
-        session.insert("portal_validated", true).ok();
+        if let Err(e) = session.insert("portal_validated", true) {
+            error!("failed to insert portal_validated into session: {e}");
+        }
         HttpResponse::Ok().finish()
     }
 
