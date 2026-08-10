@@ -147,11 +147,6 @@ pub struct WifiForgetResponse {
     pub status: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct WifiVersionResponse {
-    pub version: String,
-}
-
 /// Capabilities of the running wifi-commissioning-service instance
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct WifiServiceInfoResponse {

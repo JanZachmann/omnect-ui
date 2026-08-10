@@ -8,7 +8,7 @@ use mockall::automock;
 pub use omnect_ui_core::types::{
     VersionInfo, WifiAvailability, WifiConnectRequest, WifiConnectResponse, WifiDisconnectResponse,
     WifiForgetRequest, WifiForgetResponse, WifiSavedNetworksResponse, WifiScanResultsResponse,
-    WifiScanStartedResponse, WifiServiceInfoResponse, WifiStatusResponse, WifiVersionResponse,
+    WifiScanStartedResponse, WifiServiceInfoResponse, WifiStatusResponse,
 };
 use reqwest::Client;
 use semver::{Version, VersionReq};
@@ -28,7 +28,6 @@ pub trait WifiCommissioningClient {
     async fn status(&self) -> Result<WifiStatusResponse>;
     async fn saved_networks(&self) -> Result<WifiSavedNetworksResponse>;
     async fn forget_network(&self, request: WifiForgetRequest) -> Result<WifiForgetResponse>;
-    async fn version(&self) -> Result<WifiVersionResponse>;
     async fn service_info(&self) -> Result<WifiServiceInfoResponse>;
 }
 
@@ -54,11 +53,10 @@ impl WifiCommissioningServiceClient {
     const STATUS_ENDPOINT: &str = "/api/v1/status";
     const NETWORKS_ENDPOINT: &str = "/api/v1/networks";
     const FORGET_ENDPOINT: &str = "/api/v1/networks/forget";
-    const VERSION_ENDPOINT: &str = "/api/v1/version";
     const SERVICE_INFO_ENDPOINT: &str = "/api/v1/service-info";
 
-    // The floor is the oldest wifi-commissioning-service serving
-    // /api/v1/service-info, which is the availability probe used here.
+    // Tracks the released wifi-commissioning-service tag, not the oldest version
+    // that answers the probe. Raise it together with a released tag.
     const REQUIRED_CLIENT_VERSION: &str = ">=0.2.1";
 
     fn required_version() -> &'static VersionReq {
@@ -247,11 +245,6 @@ impl WifiCommissioningClient for WifiCommissioningServiceClient {
         serde_json::from_str(&body).context("failed to parse forget response")
     }
 
-    async fn version(&self) -> Result<WifiVersionResponse> {
-        let body = self.get(Self::VERSION_ENDPOINT).await?;
-        serde_json::from_str(&body).context("failed to parse version response")
-    }
-
     async fn service_info(&self) -> Result<WifiServiceInfoResponse> {
         let body = self.get(Self::SERVICE_INFO_ENDPOINT).await?;
         serde_json::from_str(&body).context("failed to parse service info response")
@@ -385,10 +378,6 @@ mod tests {
             assert_eq!(
                 WifiCommissioningServiceClient::FORGET_ENDPOINT,
                 "/api/v1/networks/forget"
-            );
-            assert_eq!(
-                WifiCommissioningServiceClient::VERSION_ENDPOINT,
-                "/api/v1/version"
             );
             assert_eq!(
                 WifiCommissioningServiceClient::SERVICE_INFO_ENDPOINT,
