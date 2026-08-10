@@ -63,10 +63,12 @@ import {
 	NetworkFormStateVariantsubmitting,
 	FactoryResetStatus,
 	FactoryResetStatusVariantunknown,
-	FactoryResetStatusVariantmodeSupported,
-	FactoryResetStatusVariantmodeUnsupported,
-	FactoryResetStatusVariantbackupRestoreError,
-	FactoryResetStatusVariantconfigurationError,
+	FactoryResetStatusVariantsuccess,
+	FactoryResetStatusVariantinvalid,
+	FactoryResetStatusVarianterror,
+	FactoryResetStatusVariantconfigError,
+	FactoryResetStatusVariantwarning,
+	FactoryResetStatusVariantunrecognized,
 	UploadState,
 	UploadStateVariantidle,
 	UploadStateVariantuploading,
@@ -215,7 +217,7 @@ export type WifiStateType =
 		connectPollAttempt: number
 	}
 
-export type FactoryResetStatusString = 'unknown' | 'modeSupported' | 'modeUnsupported' | 'backupRestoreError' | 'configurationError'
+export type FactoryResetStatusString = 'unknown' | 'success' | 'invalid' | 'error' | 'configError' | 'warning' | 'unrecognized'
 
 // ============================================================================
 // ViewModel Interface
@@ -238,8 +240,9 @@ export interface ViewModel {
 		result: {
 			status: FactoryResetStatusString
 			context: string | null
-			error: string
+			error: string | null
 			paths: string[]
+			dataWiped: boolean
 		} | null
 	} | null
 	updateValidationStatus: { status: string } | null
@@ -312,11 +315,21 @@ export interface ViewModel {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function factoryResetStatusToString(status: any): FactoryResetStatusString {
 	if (status instanceof FactoryResetStatusVariantunknown) return 'unknown'
-	if (status instanceof FactoryResetStatusVariantmodeSupported) return 'modeSupported'
-	if (status instanceof FactoryResetStatusVariantmodeUnsupported) return 'modeUnsupported'
-	if (status instanceof FactoryResetStatusVariantbackupRestoreError) return 'backupRestoreError'
-	if (status instanceof FactoryResetStatusVariantconfigurationError) return 'configurationError'
+	if (status instanceof FactoryResetStatusVariantsuccess) return 'success'
+	if (status instanceof FactoryResetStatusVariantinvalid) return 'invalid'
+	if (status instanceof FactoryResetStatusVarianterror) return 'error'
+	if (status instanceof FactoryResetStatusVariantconfigError) return 'configError'
+	if (status instanceof FactoryResetStatusVariantwarning) return 'warning'
+	if (status instanceof FactoryResetStatusVariantunrecognized) return 'unrecognized'
 	return 'unknown'
+}
+
+/**
+ * A warning means the reset completed, only a partition needed a second format
+ * attempt — the user sees it as success.
+ */
+export function isFactoryResetSuccess(status: FactoryResetStatusString): boolean {
+	return status === 'success' || status === 'warning'
 }
 
 /**

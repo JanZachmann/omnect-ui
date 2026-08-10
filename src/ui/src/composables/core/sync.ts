@@ -128,8 +128,9 @@ export function updateViewModelFromCore(): void {
 							? {
 									status: factoryResetStatusToString(coreViewModel.factoryReset.result.status),
 									context: coreViewModel.factoryReset.result.context || null,
-									error: coreViewModel.factoryReset.result.error,
+									error: coreViewModel.factoryReset.result.error || null,
 									paths: coreViewModel.factoryReset.result.paths,
+									dataWiped: coreViewModel.factoryReset.result.dataWiped,
 								}
 							: null,
 					}

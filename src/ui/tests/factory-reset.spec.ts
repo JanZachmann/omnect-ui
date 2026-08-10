@@ -147,10 +147,10 @@ test.describe('Device Factory Reset - Reconnection', () => {
     await expect(page.getByText('Common Info')).toBeVisible({ timeout: 10000 });
 
     // ODS publishes the factory reset result via WebSocket after republishing.
-    // status=0 maps to OdsFactoryResetResultStatus::ModeSupported → factoryResetIsSuccess=true.
+    // status=0 is Success; error and context are null when nothing went wrong.
     await publishToWebsocket('FactoryResetV1', {
       keys: ['network'],
-      result: { status: 0, error: '0', paths: ['/etc/systemd/network/'] },
+      result: { status: 0, error: null, context: null, paths: ['network'], data_wiped: true },
     });
 
     await expect(page.getByText('Factory Reset Completed', { exact: true })).toBeVisible({ timeout: 5000 });
@@ -168,10 +168,10 @@ test.describe('Device Factory Reset - Reconnection', () => {
       await route.fulfill({ status: 200 });
     });
 
-    // Trigger the factory reset success modal via WebSocket (status: 0 = ModeSupported)
+    // Trigger the factory reset success modal via WebSocket (status: 0 = Success)
     await publishToWebsocket('FactoryResetV1', {
       keys: ['network'],
-      result: { status: 0, error: '0', paths: ['/etc/systemd/network/'] },
+      result: { status: 0, error: null, context: null, paths: ['network'], data_wiped: true },
     });
 
     await expect(page.getByText('Factory Reset Completed', { exact: true })).toBeVisible({ timeout: 5000 });
@@ -196,5 +196,85 @@ test.describe('Device Factory Reset - Reconnection', () => {
       return (window as any).__factoryResetErrorFlash;
     });
     expect(flashDetected).toBe(false);
+  });
+
+  test('warning status shows the success modal', async ({ page }) => {
+    await mockPortalAuth(page);
+    await setupAndLogin(page, { factoryResetResultAcked: false });
+
+    // status=4 is Warning: the reset worked, a partition just needed a second
+    // format attempt.
+    await publishToWebsocket('FactoryResetV1', {
+      keys: ['network'],
+      result: {
+        status: 4,
+        error: null,
+        context: 'second format attempt',
+        paths: ['network'],
+        data_wiped: true,
+      },
+    });
+
+    await expect(page.getByText('Factory Reset Completed', { exact: true })).toBeVisible({ timeout: 5000 });
+  });
+
+  test('failure after data was wiped warns the device needs another reset', async ({ page }) => {
+    await mockPortalAuth(page);
+    await setupAndLogin(page, { factoryResetResultAcked: false });
+
+    await publishToWebsocket('FactoryResetV1', {
+      keys: ['network'],
+      result: {
+        status: 2,
+        error: 'format failed',
+        context: 'factory partition',
+        paths: [],
+        data_wiped: true,
+      },
+    });
+
+    await expect(page.getByText('Factory Reset Failed', { exact: true })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('format failed')).toBeVisible();
+    await expect(page.getByTestId('factory-reset-data-wiped')).toBeVisible();
+  });
+
+  test('failure before any wipe does not warn about wiped data', async ({ page }) => {
+    await mockPortalAuth(page);
+    await setupAndLogin(page, { factoryResetResultAcked: false });
+
+    // status=1 is Invalid — rejected before the destructive phase started.
+    await publishToWebsocket('FactoryResetV1', {
+      keys: ['network'],
+      result: {
+        status: 1,
+        error: 'unknown preserve key',
+        context: null,
+        paths: [],
+        data_wiped: false,
+      },
+    });
+
+    await expect(page.getByText('Factory Reset Failed', { exact: true })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('factory-reset-data-wiped')).not.toBeVisible();
+  });
+
+  test('unknown status code still shows a result modal', async ({ page }) => {
+    await mockPortalAuth(page);
+    await setupAndLogin(page, { factoryResetResultAcked: false });
+
+    // ODS reports a status it does not know itself as u32::MAX. The result must
+    // still reach the user instead of being swallowed as "no result".
+    await publishToWebsocket('FactoryResetV1', {
+      keys: ['network'],
+      result: {
+        status: 4294967295,
+        error: null,
+        context: null,
+        paths: [],
+        data_wiped: false,
+      },
+    });
+
+    await expect(page.getByText('Factory Reset Failed', { exact: true })).toBeVisible({ timeout: 5000 });
   });
 });

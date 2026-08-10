@@ -338,7 +338,7 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            versionInfo: { required: '>=0.39.0', current: '0.40.0', mismatch: false },
+            versionInfo: { required: '>=0.46.0', current: '0.46.0', mismatch: false },
             updateValidationStatus: { status: 'valid' },
             networkRollbackOccurred: healthcheckRollbackStatus,
           }),
@@ -469,7 +469,7 @@ test.describe('Network Configuration - Comprehensive E2E Tests', () => {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            versionInfo: { required: '>=0.39.0', current: '0.40.0', mismatch: false },
+            versionInfo: { required: '>=0.46.0', current: '0.46.0', mismatch: false },
             updateValidationStatus: { status: 'valid' },
             networkRollbackOccurred: true,
           }),

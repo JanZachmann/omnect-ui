@@ -156,7 +156,11 @@ impl Clone for MockDeviceServiceClient {
 }
 
 impl OmnectDeviceServiceClient {
-    const REQUIRED_CLIENT_VERSION: &str = ">=0.39.0";
+    // The floor is the oldest omnect-device-service that publishes the
+    // factory-reset result in the shape parsed here (feature version 4).
+    // TODO: remove me, as soon as the omnect-device-service release carrying
+    // factory-reset feature version 4 is tagged — replace 0.46.0 with that tag.
+    const REQUIRED_CLIENT_VERSION: &str = ">=0.46.0";
 
     // API endpoint constants
     const STATUS_ENDPOINT: &str = "/status/v1";
@@ -406,15 +410,15 @@ mod tests {
         #[test]
         fn required_version_parses_correctly() {
             let version_req = OmnectDeviceServiceClient::required_version();
-            assert_eq!(version_req.to_string(), ">=0.39.0");
+            assert_eq!(version_req.to_string(), ">=0.46.0");
         }
 
         #[test]
         fn required_version_matches_valid_versions() {
             let version_req = OmnectDeviceServiceClient::required_version();
 
-            assert!(version_req.matches(&Version::parse("0.39.0").unwrap()));
-            assert!(version_req.matches(&Version::parse("0.40.0").unwrap()));
+            assert!(version_req.matches(&Version::parse("0.46.0").unwrap()));
+            assert!(version_req.matches(&Version::parse("0.47.0").unwrap()));
             assert!(version_req.matches(&Version::parse("1.0.0").unwrap()));
         }
 
@@ -422,8 +426,10 @@ mod tests {
         fn required_version_rejects_older_versions() {
             let version_req = OmnectDeviceServiceClient::required_version();
 
-            assert!(!version_req.matches(&Version::parse("0.38.9").unwrap()));
-            assert!(!version_req.matches(&Version::parse("0.30.0").unwrap()));
+            // 0.45.2 is the last release publishing the factory-reset result in
+            // the previous shape.
+            assert!(!version_req.matches(&Version::parse("0.45.2").unwrap()));
+            assert!(!version_req.matches(&Version::parse("0.41.0").unwrap()));
             assert!(!version_req.matches(&Version::parse("0.1.0").unwrap()));
         }
     }
@@ -449,7 +455,7 @@ mod tests {
 
         #[test]
         fn detects_version_mismatch_when_below_requirement() {
-            let status = create_test_status("0.38.0");
+            let status = create_test_status("0.45.2");
             let current_version = status.system_info.omnect_device_service_version;
 
             let required_version = OmnectDeviceServiceClient::required_version();
@@ -462,7 +468,7 @@ mod tests {
 
         #[test]
         fn detects_no_mismatch_when_matching_requirement() {
-            let status = create_test_status("0.40.0");
+            let status = create_test_status("0.46.0");
             let current_version = status.system_info.omnect_device_service_version;
 
             let required_version = OmnectDeviceServiceClient::required_version();

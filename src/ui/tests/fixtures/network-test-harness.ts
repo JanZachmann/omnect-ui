@@ -213,8 +213,8 @@ export class NetworkTestHarness {
           contentType: 'application/json',
           body: JSON.stringify({
             versionInfo: {
-              required: '>=0.39.0',
-              current: '0.40.0',
+              required: '>=0.46.0',
+              current: '0.46.0',
               mismatch: false,
             },
             updateValidationStatus: {
@@ -604,7 +604,7 @@ export class NetworkTestHarness {
             'Access-Control-Allow-Credentials': 'true',
           },
           body: JSON.stringify({
-            versionInfo: { required: '>=0.39.0', current: '0.40.0', mismatch: false },
+            versionInfo: { required: '>=0.46.0', current: '0.46.0', mismatch: false },
             updateValidationStatus: { status: 'valid' },
             networkRollbackOccurred: this.networkRollbackOccurred,
           }),

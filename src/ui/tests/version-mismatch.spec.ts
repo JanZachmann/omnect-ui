@@ -13,8 +13,8 @@ test.describe('Version Mismatch', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           versionInfo: {
-            required: '>=0.39.0',
-            current: '0.35.0',
+            required: '>=0.46.0',
+            current: '0.45.2',
             mismatch: true,
           },
           updateValidationStatus: {
@@ -30,8 +30,8 @@ test.describe('Version Mismatch', () => {
 
     // The version mismatch dialog should appear
     await expect(page.getByText('omnect-device-service version mismatch')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Current version: 0.35.0')).toBeVisible();
-    await expect(page.getByText('Required version >=0.39.0')).toBeVisible();
+    await expect(page.getByText('Current version: 0.45.2')).toBeVisible();
+    await expect(page.getByText('Required version >=0.46.0')).toBeVisible();
     await expect(page.getByText('Please consider to update omnect Secure OS')).toBeVisible();
 
     // Dialog should be persistent (no close button, can't dismiss)
@@ -50,8 +50,8 @@ test.describe('Version Mismatch', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           versionInfo: {
-            required: '>=0.39.0',
-            current: '0.40.0',
+            required: '>=0.46.0',
+            current: '0.46.0',
             mismatch: false,
           },
           updateValidationStatus: {

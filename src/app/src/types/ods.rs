@@ -170,34 +170,48 @@ impl From<OdsNetworkStatus> for NetworkStatus {
     }
 }
 
-/// Factory reset result status — ODS sends numeric values (`serde_repr`)
+/// Factory reset result status — ODS sends numeric values (`serde_repr`).
+/// `u32` matches the serialization in omnect-os-init.
 #[derive(Debug, Clone, Deserialize_repr, PartialEq, Eq)]
-#[repr(u8)]
+#[repr(u32)]
 pub enum OdsFactoryResetResultStatus {
-    ModeSupported = 0,
-    ModeUnsupported = 1,
-    BackupRestoreError = 2,
-    ConfigurationError = 3,
+    Success = 0,
+    Invalid = 1,
+    Error = 2,
+    ConfigError = 3,
+    Warning = 4,
+    /// A future status code must parse instead of failing the whole update.
+    #[serde(other)]
+    Unrecognized = u32::MAX,
 }
 
 impl From<OdsFactoryResetResultStatus> for FactoryResetStatus {
     fn from(ods: OdsFactoryResetResultStatus) -> Self {
         match ods {
-            OdsFactoryResetResultStatus::ModeSupported => Self::ModeSupported,
-            OdsFactoryResetResultStatus::ModeUnsupported => Self::ModeUnsupported,
-            OdsFactoryResetResultStatus::BackupRestoreError => Self::BackupRestoreError,
-            OdsFactoryResetResultStatus::ConfigurationError => Self::ConfigurationError,
+            OdsFactoryResetResultStatus::Success => Self::Success,
+            OdsFactoryResetResultStatus::Invalid => Self::Invalid,
+            OdsFactoryResetResultStatus::Error => Self::Error,
+            OdsFactoryResetResultStatus::ConfigError => Self::ConfigError,
+            OdsFactoryResetResultStatus::Warning => Self::Warning,
+            OdsFactoryResetResultStatus::Unrecognized => Self::Unrecognized,
         }
     }
 }
 
-/// Factory reset result
+/// Factory reset result.
+/// ODS sends twin reports as merge patches, so every optional key arrives
+/// explicitly as `null` rather than being omitted.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct OdsFactoryResetResult {
     pub status: OdsFactoryResetResultStatus,
+    #[serde(default)]
     pub context: Option<String>,
-    pub error: String,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
     pub paths: Vec<String>,
+    #[serde(default)]
+    pub data_wiped: bool,
 }
 
 impl From<OdsFactoryResetResult> for FactoryResetResult {
@@ -207,6 +221,7 @@ impl From<OdsFactoryResetResult> for FactoryResetResult {
             context: ods.context,
             error: ods.error,
             paths: ods.paths,
+            data_wiped: ods.data_wiped,
         }
     }
 }

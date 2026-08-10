@@ -479,10 +479,11 @@ mod tests {
                 factory_reset: Some(FactoryReset {
                     keys: vec!["key1".to_string()],
                     result: Some(FactoryResetResult {
-                        status: FactoryResetStatus::ModeSupported,
+                        status: FactoryResetStatus::Success,
                         context: None,
-                        error: String::new(),
+                        error: None,
                         paths: vec![],
+                        data_wiped: true,
                     }),
                 }),
                 ..Default::default()
