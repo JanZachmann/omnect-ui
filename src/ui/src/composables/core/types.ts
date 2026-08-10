@@ -200,9 +200,16 @@ export interface WifiSavedNetworkType {
 	flags: string
 }
 
+/** Shared by the omnect-device-service healthcheck and the WiFi service probe. */
+export interface VersionInfoType {
+	required: string
+	current: string
+	mismatch: boolean
+}
+
 export type WifiStateType =
 	| { type: 'unknown' }
-	| { type: 'unavailable', socketPresent: boolean, version: string | null, minRequiredVersion: string }
+	| { type: 'unavailable', socketPresent: boolean, versionInfo: VersionInfoType | null }
 	| {
 		type: 'ready'
 		interfaceName: string
@@ -246,7 +253,7 @@ export interface ViewModel {
 	updateManifest: UpdateManifest | null
 	timeouts: { waitOnlineTimeout: { nanos: number; secs: bigint } } | null
 	healthcheck: {
-		versionInfo: { required: string; current: string; mismatch: boolean }
+		versionInfo: VersionInfoType
 		updateValidationStatus: { status: string }
 		networkRollbackOccurred: boolean
 		updateValidationAcked: boolean
@@ -491,8 +498,13 @@ export function convertWifiState(state: WifiState): WifiStateType {
 		return {
 			type: 'unavailable',
 			socketPresent: s.socket_present,
-			version: s.version || null,
-			minRequiredVersion: s.min_required_version,
+			versionInfo: s.version_info
+				? {
+						required: s.version_info.required,
+						current: s.version_info.current,
+						mismatch: s.version_info.mismatch,
+					}
+				: null,
 		}
 	}
 	if (state instanceof WifiStateVariantready) {

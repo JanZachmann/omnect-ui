@@ -1,3 +1,4 @@
+use super::update::VersionInfo;
 use serde::{Deserialize, Serialize};
 
 /// `WiFi` service availability info returned by the backend
@@ -10,8 +11,9 @@ pub enum WifiAvailability {
     },
     Unavailable {
         socket_present: bool,
-        version: Option<String>,
-        min_required_version: String,
+        /// `None` when the service could not be reached at all, so there is no
+        /// version to compare.
+        version_info: Option<VersionInfo>,
     },
 }
 
@@ -70,8 +72,7 @@ pub enum WifiState {
     Unknown,
     Unavailable {
         socket_present: bool,
-        version: Option<String>,
-        min_required_version: String,
+        version_info: Option<VersionInfo>,
     },
     Ready {
         interface_name: String,
@@ -148,5 +149,15 @@ pub struct WifiForgetResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct WifiVersionResponse {
+    pub version: String,
+}
+
+/// Capabilities of the running wifi-commissioning-service instance
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct WifiServiceInfoResponse {
+    pub status: String,
+    /// Live BLE transport state: `true` only once BLE actually started.
+    pub ble_enabled: bool,
+    pub interface_name: String,
     pub version: String,
 }

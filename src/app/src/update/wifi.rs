@@ -88,13 +88,11 @@ pub fn handle(event: WifiEvent, model: &mut Model) -> Command<Effect, Event> {
             }
             Ok(WifiAvailability::Unavailable {
                 socket_present,
-                version,
-                min_required_version,
+                version_info,
             }) => {
                 model.wifi_state = WifiState::Unavailable {
                     socket_present,
-                    version,
-                    min_required_version,
+                    version_info,
                 };
                 render()
             }
@@ -102,8 +100,7 @@ pub fn handle(event: WifiEvent, model: &mut Model) -> Command<Effect, Event> {
                 log::error!("WiFi availability check failed: {e}");
                 model.wifi_state = WifiState::Unavailable {
                     socket_present: false,
-                    version: None,
-                    min_required_version: "0.1.0".to_string(), // Fallback
+                    version_info: None,
                 };
                 render()
             }
@@ -509,7 +506,7 @@ mod tests {
     use super::*;
     use crate::{
         EffectTestExt,
-        types::{WifiAvailability, WifiSavedNetwork},
+        types::{VersionInfo, WifiAvailability, WifiSavedNetwork},
     };
 
     fn model_with_ready_state() -> Model {
@@ -567,18 +564,38 @@ mod tests {
         #[test]
         fn check_availability_unavailable_response() {
             let mut model = Model::default();
+            let version_info = VersionInfo {
+                required: ">=0.2.1".to_string(),
+                current: "0.2.0".to_string(),
+                mismatch: true,
+            };
             let result = Ok(WifiAvailability::Unavailable {
                 socket_present: true,
-                version: Some("0.0.9".to_string()),
-                min_required_version: "0.1.0".to_string(),
+                version_info: Some(version_info.clone()),
             });
             let _ = handle(WifiEvent::CheckAvailabilityResponse(result), &mut model);
             assert_eq!(
                 model.wifi_state,
                 WifiState::Unavailable {
                     socket_present: true,
-                    version: Some("0.0.9".to_string()),
-                    min_required_version: "0.1.0".to_string()
+                    version_info: Some(version_info),
+                }
+            );
+        }
+
+        #[test]
+        fn unreachable_service_reports_no_version_info() {
+            let mut model = Model::default();
+            let result = Ok(WifiAvailability::Unavailable {
+                socket_present: true,
+                version_info: None,
+            });
+            let _ = handle(WifiEvent::CheckAvailabilityResponse(result), &mut model);
+            assert_eq!(
+                model.wifi_state,
+                WifiState::Unavailable {
+                    socket_present: true,
+                    version_info: None,
                 }
             );
         }
@@ -592,8 +609,7 @@ mod tests {
                 model.wifi_state,
                 WifiState::Unavailable {
                     socket_present: false,
-                    version: None,
-                    min_required_version: "0.1.0".to_string()
+                    version_info: None,
                 }
             );
         }

@@ -16,12 +16,11 @@ async function mockWifiAvailable(page: Page, available = true, interfaceName = '
       body: JSON.stringify(available ? {
         state: "available",
         interface_name: interfaceName,
-        version: "0.1.0"
+        version: "0.2.1"
       } : {
         state: "unavailable",
         socket_present: false,
-        version: "0.1.0",
-        min_required_version: "0.1.0"
+        version_info: null
       }),
     });
   });

@@ -101,8 +101,7 @@ mod tests {
             Event::Wifi(WifiEvent::CheckAvailabilityResponse(Ok(
                 WifiAvailability::Unavailable {
                     socket_present: false,
-                    version: None,
-                    min_required_version: "0.1.0".into(),
+                    version_info: None,
                 },
             ))),
             &mut model,

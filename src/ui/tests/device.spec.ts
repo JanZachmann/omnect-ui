@@ -14,7 +14,7 @@ test.describe('Device Info', () => {
   }
 
   test('displays system info via WebSocket', async ({ page }) => {
-    await mockWifiAvailable(page, { state: 'unavailable', socket_present: false, version: null, min_required_version: "0.1.0" });
+    await mockWifiAvailable(page, { state: 'unavailable', socket_present: false, version_info: null });
     await setupAndLogin(page);
 
     const systemInfo = {
@@ -40,23 +40,34 @@ test.describe('Device Info', () => {
   });
 
   test('hides WiFi commissioning service version when socket is missing', async ({ page }) => {
-    await mockWifiAvailable(page, { state: 'unavailable', socket_present: false, version: null, min_required_version: "0.1.0" });
+    await mockWifiAvailable(page, { state: 'unavailable', socket_present: false, version_info: null });
     await setupAndLogin(page);
     await expect(page.getByText('WiFi commissioning service version')).not.toBeVisible();
   });
 
   test('displays WiFi commissioning service version with hint when incompatible', async ({ page }) => {
-    await mockWifiAvailable(page, { state: 'unavailable', socket_present: true, version: "0.0.9", min_required_version: "0.1.0" });
+    await mockWifiAvailable(page, {
+      state: 'unavailable',
+      socket_present: true,
+      version_info: { required: '>=0.2.1', current: '0.2.0', mismatch: true },
+    });
     await setupAndLogin(page);
     await expect(page.getByText('WiFi commissioning service version')).toBeVisible();
-    await expect(page.getByText('0.0.9 (minimum required: 0.1.0)')).toBeVisible();
+    await expect(page.getByText('0.2.0 (required: >=0.2.1)')).toBeVisible();
+  });
+
+  test('shows unknown version when the service does not answer the probe', async ({ page }) => {
+    await mockWifiAvailable(page, { state: 'unavailable', socket_present: true, version_info: null });
+    await setupAndLogin(page);
+    await expect(page.getByText('WiFi commissioning service version')).toBeVisible();
+    await expect(page.getByText('unknown', { exact: true })).toBeVisible();
   });
 
   test('displays WiFi commissioning service version without hint when compatible', async ({ page }) => {
-    await mockWifiAvailable(page, { state: 'available', version: "0.1.1", interface_name: "wlan0" });
+    await mockWifiAvailable(page, { state: 'available', version: "0.2.1", interface_name: "wlan0" });
     await setupAndLogin(page);
     await expect(page.getByText('WiFi commissioning service version')).toBeVisible();
-    await expect(page.getByText('0.1.1', { exact: true })).toBeVisible();
-    await expect(page.getByText('minimum required')).not.toBeVisible();
+    await expect(page.getByText('0.2.1', { exact: true })).toBeVisible();
+    await expect(page.getByText('required:')).not.toBeVisible();
   });
 });

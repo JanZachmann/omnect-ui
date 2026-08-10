@@ -289,10 +289,11 @@ fn optimal_worker_count() -> usize {
 }
 
 async fn initialize_wifi_client() -> (Option<WifiCommissioningServiceClient>, WifiAvailability) {
+    // No socket means the service is not installed at all, so there is no
+    // version to report.
     let unavailable = WifiAvailability::Unavailable {
         socket_present: false,
-        version: None,
-        min_required_version: WifiCommissioningServiceClient::MIN_REQUIRED_VERSION.to_string(),
+        version_info: None,
     };
 
     let config = &AppConfig::get().wifi;
