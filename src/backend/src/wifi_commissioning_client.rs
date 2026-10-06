@@ -314,7 +314,7 @@ mod tests {
             let resp: WifiSavedNetworksResponse = serde_json::from_str(json).unwrap();
             assert_eq!(resp.networks.len(), 2);
             assert_eq!(resp.networks[0].flags, "[CURRENT]");
-            assert!(resp.networks[1].flags.is_empty());
+            assert_eq!(resp.networks[1].flags, "");
         }
     }
 

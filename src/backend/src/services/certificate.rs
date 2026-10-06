@@ -49,7 +49,7 @@ impl CertificateService {
     /// # Returns
     /// Result indicating success or failure
     #[cfg(feature = "mock")]
-    #[allow(clippy::unused_async)] // signature must match non-mock async version
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)] // signature must match non-mock async version
     pub async fn create_module_certificate(_payload: CreateCertPayload) -> Result<()> {
         Ok(())
     }

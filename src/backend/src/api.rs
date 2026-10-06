@@ -2,7 +2,8 @@
 #![allow(
     clippy::future_not_send,
     clippy::needless_pass_by_value,
-    clippy::unused_async
+    clippy::unused_async,
+    clippy::unused_async_trait_impl
 )]
 
 use crate::{

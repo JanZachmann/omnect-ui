@@ -100,7 +100,7 @@ mod tests {
         let manager = TokenManager::new("test-secret-key!");
         let token = manager.create_token().expect("should create token");
 
-        assert!(!token.is_empty());
+        assert_ne!(token, "");
         assert!(manager.verify_token(&token));
     }
 

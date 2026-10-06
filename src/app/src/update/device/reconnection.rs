@@ -142,7 +142,7 @@ fn advance_device_operation_state(
 
             // For updates, completion requires a terminal status field (not just reachability)
             let update_done = if is_updating {
-                result.as_ref().ok().is_some_and(is_update_complete)
+                result.as_ref().is_ok_and(is_update_complete)
             } else {
                 result.is_ok()
             };
@@ -186,7 +186,7 @@ fn advance_device_operation_state(
             } else {
                 // For updates, completion requires a terminal status field
                 let update_done = if is_update {
-                    result.as_ref().ok().is_some_and(is_update_complete)
+                    result.as_ref().is_ok_and(is_update_complete)
                 } else {
                     true
                 };

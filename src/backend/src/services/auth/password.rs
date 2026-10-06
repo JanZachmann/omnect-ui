@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn test_hash_password() {
         let hash = PasswordService::hash_password("testpassword").expect("should hash");
-        assert!(!hash.is_empty());
+        assert_ne!(hash, "");
         assert!(hash.starts_with("$argon2"));
     }
 
