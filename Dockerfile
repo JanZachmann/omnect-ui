@@ -1,6 +1,6 @@
 ARG DOCKER_NAMESPACE=omnectweucopsacr.azurecr.io
-ARG BUILD_IMAGE=${DOCKER_NAMESPACE}/rust:bookworm
-ARG DISTROLESS_IMAGE=gcr.io/distroless/base-debian12:nonroot
+ARG BUILD_IMAGE=${DOCKER_NAMESPACE}/rust:trixie
+ARG DISTROLESS_IMAGE=gcr.io/distroless/base-debian13:nonroot
 
 FROM ${DISTROLESS_IMAGE} AS distroless
 
@@ -56,7 +56,7 @@ RUN bun run build
 RUN echo 'const p = JSON.parse(await Bun.file("package.json").text()); delete p.devDependencies; delete p.scripts; await Bun.write("/tmp/sbom-package.json", JSON.stringify(p, null, 2));' | bun run -
 
 # Stage 5: Build Rust backend for target architecture with embedded frontend
-FROM ${DOCKER_NAMESPACE}/rust:bookworm AS builder
+FROM ${DOCKER_NAMESPACE}/rust:trixie AS builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -90,7 +90,7 @@ SHELL ["/bin/bash", "-c"]
 RUN <<EOT
     set -eu
 
-    mkdir -p /copy/status.d
+    mkdir -p /copy/status.d /copy/usr/lib
 
     executable=(omnect-ui-bin)
 
@@ -135,7 +135,7 @@ RUN mkdir /cert
 FROM ${DISTROLESS_IMAGE} AS base
 COPY --from=builder --chown=10000:10000 /cert /cert
 COPY --from=builder /work/omnect-ui-bin /omnect-ui
-COPY --from=builder /copy/lib/ /lib/
+COPY --from=builder /copy/usr/lib/ /usr/lib/
 COPY --from=builder /copy/status.d /var/lib/dpkg/status.d
 # npm runtime metadata for SBOM generation (stripped of devDependencies)
 COPY --from=vue-build /tmp/sbom-package.json /sbom/npm/package.json
