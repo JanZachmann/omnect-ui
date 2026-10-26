@@ -171,7 +171,6 @@ impl From<OdsNetworkStatus> for NetworkStatus {
 }
 
 /// Factory reset result status — ODS sends numeric values (`serde_repr`).
-/// `u32` matches the serialization in omnect-os-init.
 #[derive(Debug, Clone, Deserialize_repr, PartialEq, Eq)]
 #[repr(u32)]
 pub enum OdsFactoryResetResultStatus {
@@ -199,14 +198,10 @@ impl From<OdsFactoryResetResultStatus> for FactoryResetStatus {
 }
 
 /// Factory reset result.
-/// ODS sends twin reports as merge patches, so every optional key arrives
-/// explicitly as `null` rather than being omitted.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct OdsFactoryResetResult {
     pub status: OdsFactoryResetResultStatus,
-    #[serde(default)]
     pub context: Option<String>,
-    #[serde(default)]
     pub error: Option<String>,
     #[serde(default)]
     pub paths: Vec<String>,

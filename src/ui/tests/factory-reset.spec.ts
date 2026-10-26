@@ -199,7 +199,7 @@ test.describe('Device Factory Reset - Reconnection', () => {
     expect(flashDetected).toBe(false);
   });
 
-  test('warning status shows the success modal', async ({ page }) => {
+  test('warning status shows the success modal with its context', async ({ page }) => {
     await mockPortalAuth(page);
     await setupAndLogin(page, { factoryResetResultAcked: false });
 
@@ -210,16 +210,17 @@ test.describe('Device Factory Reset - Reconnection', () => {
       result: {
         status: 4,
         error: null,
-        context: 'second format attempt',
+        context: 'etc reformatted twice',
         paths: ['network'],
         data_wiped: true,
       },
     });
 
     await expect(page.getByText('Factory Reset Completed', { exact: true })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('etc reformatted twice')).toBeVisible();
   });
 
-  test('failure after data was wiped warns the device needs another reset', async ({ page }) => {
+  test('failure after data was wiped warns that preserved data may be lost', async ({ page }) => {
     await mockPortalAuth(page);
     await setupAndLogin(page, { factoryResetResultAcked: false });
 
@@ -248,7 +249,7 @@ test.describe('Device Factory Reset - Reconnection', () => {
       keys: ['network'],
       result: {
         status: 1,
-        error: 'unknown preserve key',
+        error: 'factory reset mode 4 is not supported',
         context: null,
         paths: [],
         data_wiped: false,
@@ -259,23 +260,24 @@ test.describe('Device Factory Reset - Reconnection', () => {
     await expect(page.getByTestId('factory-reset-data-wiped')).not.toBeVisible();
   });
 
-  test('unknown status code still shows a result modal', async ({ page }) => {
-    await mockPortalAuth(page);
-    await setupAndLogin(page, { factoryResetResultAcked: false });
+  for (const status of [5, 4294967295]) {
+    test(`unknown status code ${status} still shows a result modal`, async ({ page }) => {
+      await mockPortalAuth(page);
+      await setupAndLogin(page, { factoryResetResultAcked: false });
 
-    // ODS reports a status it does not know itself as u32::MAX. The result must
-    // still reach the user instead of being swallowed as "no result".
-    await publishToWebsocket('FactoryResetV1', {
-      keys: ['network'],
-      result: {
-        status: 4294967295,
-        error: null,
-        context: null,
-        paths: [],
-        data_wiped: false,
-      },
+      await publishToWebsocket('FactoryResetV1', {
+        keys: ['network'],
+        result: {
+          status,
+          error: null,
+          context: null,
+          paths: [],
+          data_wiped: false,
+        },
+      });
+
+      await expect(page.getByText('Factory Reset Failed', { exact: true })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText('The device reported an unknown result.')).toBeVisible();
     });
-
-    await expect(page.getByText('Factory Reset Failed', { exact: true })).toBeVisible({ timeout: 5000 });
-  });
+  }
 });

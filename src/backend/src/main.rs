@@ -5,6 +5,7 @@ mod keycloak_client;
 mod middleware;
 mod omnect_device_service_client;
 mod services;
+mod version;
 mod wifi_commissioning_client;
 
 use crate::{
@@ -293,8 +294,6 @@ fn optimal_worker_count() -> usize {
 }
 
 async fn initialize_wifi_client() -> (Option<WifiCommissioningServiceClient>, WifiAvailability) {
-    // No socket means the service is not installed at all, so there is no
-    // version to report.
     let unavailable = WifiAvailability::Unavailable {
         socket_present: false,
         version_info: None,

@@ -11,8 +11,7 @@ pub enum WifiAvailability {
     },
     Unavailable {
         socket_present: bool,
-        /// `None` when the service could not be reached at all, so there is no
-        /// version to compare.
+        /// `None` when the probe gave no usable version.
         version_info: Option<VersionInfo>,
     },
 }

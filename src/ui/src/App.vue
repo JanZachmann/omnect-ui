@@ -95,6 +95,7 @@ const factoryResetModalSuccess = ref(false)
 const factoryResetError = ref<string | null>(null)
 const factoryResetContext = ref<string | null>(null)
 const factoryResetDataWiped = ref(false)
+const factoryResetUnrecognized = ref(false)
 const updateValidationIsRollback = ref(false)
 
 // Watch authentication state to redirect to login if session is lost
@@ -136,6 +137,7 @@ watch(
 			factoryResetContext.value = result.context ?? null
 			factoryResetModalSuccess.value = isFactoryResetSuccess(result.status)
 			factoryResetDataWiped.value = result.dataWiped
+			factoryResetUnrecognized.value = result.status === 'unrecognized'
 			showFactoryResetResultModal.value = true
 		}
 	}
@@ -199,13 +201,15 @@ watch(
         <div class="flex flex-col gap-4 mb-4">
           <template v-if="factoryResetModalSuccess">
             <p>The factory reset completed successfully.</p>
+            <p v-if="factoryResetContext">{{ factoryResetContext }}</p>
           </template>
           <template v-else>
+            <p v-if="factoryResetUnrecognized">The device reported an unknown result.</p>
             <p v-if="factoryResetError">{{ factoryResetError }}</p>
             <p v-if="factoryResetContext">{{ factoryResetContext }}</p>
             <p v-if="factoryResetDataWiped" data-testid="factory-reset-data-wiped">
-              Device data was already wiped before the reset failed. The device needs a new
-              factory reset to reach a defined state.
+              Data on the device was already changed when the reset failed. Preserved data may
+              be lost.
             </p>
           </template>
           <div class="flex justify-end">

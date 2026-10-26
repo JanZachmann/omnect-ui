@@ -4,16 +4,16 @@ use crate::{
     config::AppConfig,
     http_client::{handle_http_response, unix_socket_client},
     services::marker,
+    version::{VersionInfo, version_info},
 };
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use log::info;
 #[cfg(feature = "mock")]
 use mockall::automock;
 use reqwest::Client;
-use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::{env, fmt::Debug, path::PathBuf, sync::OnceLock};
+use std::{env, fmt::Debug, path::PathBuf};
 use trait_variant::make;
 
 #[derive(Clone, Debug, Default, Deserialize_repr, PartialEq, Eq, Serialize_repr)]
@@ -87,14 +87,6 @@ pub struct Ipv4AddrInfo {
     pub addr: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VersionInfo {
-    pub required: String,
-    pub current: String,
-    pub mismatch: bool,
-}
-
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthcheckInfo {
@@ -157,9 +149,7 @@ impl Clone for MockDeviceServiceClient {
 impl OmnectDeviceServiceClient {
     // The floor is the oldest omnect-device-service that publishes the
     // factory-reset result in the shape parsed here (feature version 4).
-    // TODO: remove me, as soon as the omnect-device-service release carrying
-    // factory-reset feature version 4 is tagged — replace 0.46.0 with that tag.
-    const REQUIRED_CLIENT_VERSION: &str = ">=0.46.0";
+    const REQUIRED_CLIENT_VERSION: &str = ">=0.46.1";
 
     // API endpoint constants
     const STATUS_ENDPOINT: &str = "/status/v1";
@@ -182,14 +172,6 @@ impl OmnectDeviceServiceClient {
         Ok(Self {
             client,
             has_publish_endpoint: false,
-        })
-    }
-
-    fn required_version() -> &'static VersionReq {
-        static REQUIRED_VERSION: OnceLock<VersionReq> = OnceLock::new();
-        REQUIRED_VERSION.get_or_init(|| {
-            VersionReq::parse(Self::REQUIRED_CLIENT_VERSION)
-                .expect("invalid REQUIRED_CLIENT_VERSION constant")
         })
     }
 
@@ -315,18 +297,13 @@ impl DeviceServiceClient for OmnectDeviceServiceClient {
 
     async fn healthcheck_info(&self) -> Result<HealthcheckInfo> {
         let status = self.status().await?;
-        let current_version = status.system_info.omnect_device_service_version;
-
-        let required_version = Self::required_version();
-        let parsed_current = Version::parse(&current_version)
-            .map_err(|e| anyhow!("failed to parse current version: {e}"))?;
+        let version_info = version_info(
+            Self::REQUIRED_CLIENT_VERSION,
+            &status.system_info.omnect_device_service_version,
+        )?;
 
         Ok(HealthcheckInfo {
-            version_info: VersionInfo {
-                required: Self::REQUIRED_CLIENT_VERSION.to_string(),
-                current: current_version,
-                mismatch: !required_version.matches(&parsed_current),
-            },
+            version_info,
             update_validation_status: status.update_validation_status,
             network_rollback_occurred: marker::NETWORK_ROLLBACK_OCCURRED.exists(),
             factory_reset_result_acked: marker::FACTORY_RESET_RESULT_ACKED.exists(),
@@ -406,77 +383,59 @@ mod tests {
     mod version_requirements {
         use super::*;
 
-        #[test]
-        fn required_version_parses_correctly() {
-            let version_req = OmnectDeviceServiceClient::required_version();
-            assert_eq!(version_req.to_string(), ">=0.46.0");
+        fn mismatch(current: &str) -> bool {
+            version_info(OmnectDeviceServiceClient::REQUIRED_CLIENT_VERSION, current)
+                .unwrap()
+                .mismatch
         }
 
         #[test]
-        fn required_version_matches_valid_versions() {
-            let version_req = OmnectDeviceServiceClient::required_version();
-
-            assert!(version_req.matches(&Version::parse("0.46.0").unwrap()));
-            assert!(version_req.matches(&Version::parse("0.47.0").unwrap()));
-            assert!(version_req.matches(&Version::parse("1.0.0").unwrap()));
+        fn accepts_the_floor_and_newer() {
+            for current in ["0.46.1", "0.47.0", "1.0.0"] {
+                assert!(
+                    !mismatch(current),
+                    "{current} should satisfy the requirement"
+                );
+            }
         }
 
         #[test]
-        fn required_version_rejects_older_versions() {
-            let version_req = OmnectDeviceServiceClient::required_version();
+        fn rejects_older_versions() {
+            for current in ["0.46.0", "0.45.10", "0.1.0"] {
+                assert!(
+                    mismatch(current),
+                    "{current} should not satisfy the requirement"
+                );
+            }
+        }
+    }
 
-            // 0.45.2 is the last release publishing the factory-reset result in
-            // the previous shape.
-            assert!(!version_req.matches(&Version::parse("0.45.2").unwrap()));
-            assert!(!version_req.matches(&Version::parse("0.41.0").unwrap()));
-            assert!(!version_req.matches(&Version::parse("0.1.0").unwrap()));
+    mod factory_reset_request {
+        use super::*;
+
+        #[test]
+        fn accepts_modes_1_to_3() {
+            for (json, mode) in [
+                (r#"{"mode":1,"preserve":[]}"#, FactoryResetMode::Mode1),
+                (r#"{"mode":2,"preserve":[]}"#, FactoryResetMode::Mode2),
+                (
+                    r#"{"mode":3,"preserve":["network"]}"#,
+                    FactoryResetMode::Mode3,
+                ),
+            ] {
+                let request: FactoryReset = serde_json::from_str(json).unwrap();
+                assert_eq!(request.mode, mode);
+            }
+        }
+
+        #[test]
+        fn rejects_mode_4() {
+            assert!(serde_json::from_str::<FactoryReset>(r#"{"mode":4,"preserve":[]}"#).is_err());
         }
     }
 
     mod healthcheck_info {
         use super::*;
-        use crate::services::network::NetworkConfigService;
-
-        fn create_test_status(version: &str) -> Status {
-            Status {
-                network_status: NetworkStatus {
-                    network_interfaces: vec![],
-                },
-                system_info: SystemInfo {
-                    fleet_id: Some("test-fleet".to_string()),
-                    omnect_device_service_version: version.to_string(),
-                },
-                update_validation_status: UpdateValidationStatus {
-                    status: "idle".to_string(),
-                },
-            }
-        }
-
-        #[test]
-        fn detects_version_mismatch_when_below_requirement() {
-            let status = create_test_status("0.45.2");
-            let current_version = status.system_info.omnect_device_service_version;
-
-            let required_version = OmnectDeviceServiceClient::required_version();
-            let parsed_current = Version::parse(&current_version).unwrap();
-
-            let mismatch = !required_version.matches(&parsed_current);
-
-            assert!(mismatch);
-        }
-
-        #[test]
-        fn detects_no_mismatch_when_matching_requirement() {
-            let status = create_test_status("0.46.0");
-            let current_version = status.system_info.omnect_device_service_version;
-
-            let required_version = OmnectDeviceServiceClient::required_version();
-            let parsed_current = Version::parse(&current_version).unwrap();
-
-            let mismatch = !required_version.matches(&parsed_current);
-
-            assert!(!mismatch);
-        }
 
         #[test]
         fn healthcheck_includes_network_rollback_status() {
@@ -547,7 +506,8 @@ mod tests {
 
         #[test]
         fn required_version_constant_is_valid_semver_requirement() {
-            let version_req = VersionReq::parse(OmnectDeviceServiceClient::REQUIRED_CLIENT_VERSION);
+            let version_req =
+                semver::VersionReq::parse(OmnectDeviceServiceClient::REQUIRED_CLIENT_VERSION);
             assert!(version_req.is_ok());
         }
     }

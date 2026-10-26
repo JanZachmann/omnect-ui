@@ -5,8 +5,7 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum FactoryResetStatus {
-    /// No result received yet. Distinct from `Unrecognized` so the UI can stay
-    /// silent while a result is missing and still report one it cannot name.
+    /// No result received yet.
     #[default]
     Unknown,
     Success,
@@ -17,15 +16,6 @@ pub enum FactoryResetStatus {
     Warning,
     /// A status code this version does not know.
     Unrecognized,
-}
-
-impl FactoryResetStatus {
-    /// `Warning` counts as success: the reset completed, only a partition
-    /// needed a retry.
-    #[must_use]
-    pub const fn is_success(self) -> bool {
-        matches!(self, Self::Success | Self::Warning)
-    }
 }
 
 impl fmt::Display for FactoryResetStatus {

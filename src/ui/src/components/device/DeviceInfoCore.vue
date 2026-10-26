@@ -43,12 +43,12 @@ const deviceInfo = computed(() => {
     if (viewModel.wifiState.type === 'ready') {
       infoMap.set('WiFi commissioning service version', viewModel.wifiState.version || 'unknown')
     } else if (viewModel.wifiState.type === 'unavailable' && viewModel.wifiState.socketPresent) {
-      // No versionInfo means the service did not answer the probe at all.
       const info = viewModel.wifiState.versionInfo
-      infoMap.set(
-        'WiFi commissioning service version',
-        info ? `${info.current} (required: ${info.required})` : 'unknown'
-      )
+      let version = 'unknown'
+      if (info) {
+        version = info.mismatch ? `${info.current} (required: ${info.required})` : info.current
+      }
+      infoMap.set('WiFi commissioning service version', version)
     }
   }
 

@@ -13,6 +13,13 @@ test.describe('Device Info', () => {
     });
   }
 
+  function wifiVersionValue(page: Page) {
+    return page
+      .locator('dl > div')
+      .filter({ has: page.getByText('WiFi commissioning service version', { exact: true }) })
+      .locator('dd');
+  }
+
   test('displays system info via WebSocket', async ({ page }) => {
     await mockWifiAvailable(page, { state: 'unavailable', socket_present: false, version_info: null });
     await setupAndLogin(page);
@@ -59,15 +66,22 @@ test.describe('Device Info', () => {
   test('shows unknown version when the service does not answer the probe', async ({ page }) => {
     await mockWifiAvailable(page, { state: 'unavailable', socket_present: true, version_info: null });
     await setupAndLogin(page);
-    await expect(page.getByText('WiFi commissioning service version')).toBeVisible();
-    await expect(page.getByText('unknown', { exact: true })).toBeVisible();
+    await expect(wifiVersionValue(page)).toHaveText('unknown');
+  });
+
+  test('shows the version without hint when the service is unavailable for another reason', async ({ page }) => {
+    await mockWifiAvailable(page, {
+      state: 'unavailable',
+      socket_present: true,
+      version_info: { required: '>=0.2.1', current: '0.2.1', mismatch: false },
+    });
+    await setupAndLogin(page);
+    await expect(wifiVersionValue(page)).toHaveText('0.2.1');
   });
 
   test('displays WiFi commissioning service version without hint when compatible', async ({ page }) => {
     await mockWifiAvailable(page, { state: 'available', version: "0.2.1", interface_name: "wlan0" });
     await setupAndLogin(page);
-    await expect(page.getByText('WiFi commissioning service version')).toBeVisible();
-    await expect(page.getByText('0.2.1', { exact: true })).toBeVisible();
-    await expect(page.getByText('required:')).not.toBeVisible();
+    await expect(wifiVersionValue(page)).toHaveText('0.2.1');
   });
 });

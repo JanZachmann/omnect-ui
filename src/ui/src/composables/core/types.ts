@@ -202,7 +202,6 @@ export interface WifiSavedNetworkType {
 	flags: string
 }
 
-/** Shared by the omnect-device-service healthcheck and the WiFi service probe. */
 export interface VersionInfoType {
 	required: string
 	current: string
@@ -333,7 +332,7 @@ export function factoryResetStatusToString(status: any): FactoryResetStatusStrin
 
 /**
  * A warning means the reset completed, only a partition needed a second format
- * attempt — the user sees it as success.
+ * attempt.
  */
 export function isFactoryResetSuccess(status: FactoryResetStatusString): boolean {
 	return status === 'success' || status === 'warning'

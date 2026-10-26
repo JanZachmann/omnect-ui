@@ -216,7 +216,6 @@ mod tests {
             );
 
             assert_eq!(result.status, FactoryResetStatus::Success);
-            assert!(result.status.is_success());
             assert_eq!(result.error, None);
             assert_eq!(result.context, None);
             assert_eq!(result.paths, vec!["network"]);
@@ -230,26 +229,24 @@ mod tests {
             );
 
             assert_eq!(result.status, FactoryResetStatus::Error);
-            assert!(!result.status.is_success());
             assert_eq!(result.error.as_deref(), Some("format failed"));
             assert_eq!(result.context.as_deref(), Some("factory partition"));
             assert!(result.data_wiped);
         }
 
         #[test]
-        fn warning_counts_as_success() {
+        fn parses_warning_result() {
             let result = parse_result(
                 r#"{"keys":["network"],"result":{"status":4,"error":null,"context":"second format attempt","paths":[],"data_wiped":true}}"#,
             );
 
             assert_eq!(result.status, FactoryResetStatus::Warning);
-            assert!(result.status.is_success());
         }
 
         #[test]
         fn abort_before_wipe_reports_data_not_wiped() {
             let result = parse_result(
-                r#"{"keys":["network"],"result":{"status":1,"error":"unknown preserve key","context":null,"paths":[],"data_wiped":false}}"#,
+                r#"{"keys":["network"],"result":{"status":1,"error":"factory reset mode 4 is not supported","context":null,"paths":[],"data_wiped":false}}"#,
             );
 
             assert_eq!(result.status, FactoryResetStatus::Invalid);
@@ -266,26 +263,18 @@ mod tests {
         }
 
         #[test]
-        fn unknown_status_code_parses_as_unrecognized() {
-            // ODS reports a status it does not know itself as u32::MAX; any
-            // future code must not fail the whole update.
-            let result = parse_result(
-                r#"{"keys":["network"],"result":{"status":4294967295,"error":null,"context":null,"paths":[],"data_wiped":false}}"#,
-            );
+        fn unknown_status_codes_parse_as_unrecognized() {
+            for code in [5, u32::MAX] {
+                let result = parse_result(&format!(
+                    r#"{{"keys":["network"],"result":{{"status":{code},"error":null,"context":null,"paths":[],"data_wiped":false}}}}"#
+                ));
 
-            assert_eq!(result.status, FactoryResetStatus::Unrecognized);
-            assert!(!result.status.is_success());
-        }
-
-        #[test]
-        fn unrecognized_status_is_distinct_from_no_result() {
-            // The UI stays silent on Unknown (no result yet) but must still
-            // report a result whose status it cannot name.
-            assert_ne!(
-                FactoryResetStatus::Unrecognized,
-                FactoryResetStatus::Unknown
-            );
-            assert_eq!(FactoryResetStatus::default(), FactoryResetStatus::Unknown);
+                assert_eq!(
+                    result.status,
+                    FactoryResetStatus::Unrecognized,
+                    "code {code}"
+                );
+            }
         }
 
         #[test]

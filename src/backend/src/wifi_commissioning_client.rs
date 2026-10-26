@@ -1,19 +1,21 @@
 #![cfg_attr(feature = "mock", allow(dead_code, unused_imports))]
 
-use crate::http_client::{handle_http_response, unix_socket_client};
+use crate::{
+    http_client::{handle_http_response, unix_socket_client},
+    version::version_info,
+};
 use anyhow::{Context, Result};
 use log::info;
 #[cfg(feature = "mock")]
 use mockall::automock;
 pub use omnect_ui_core::types::{
-    VersionInfo, WifiAvailability, WifiConnectRequest, WifiConnectResponse, WifiDisconnectResponse,
+    WifiAvailability, WifiConnectRequest, WifiConnectResponse, WifiDisconnectResponse,
     WifiForgetRequest, WifiForgetResponse, WifiSavedNetworksResponse, WifiScanResultsResponse,
     WifiScanStartedResponse, WifiServiceInfoResponse, WifiStatusResponse,
 };
 use reqwest::Client;
-use semver::{Version, VersionReq};
 use serde::Serialize;
-use std::{fmt::Debug, path::Path, sync::OnceLock};
+use std::{fmt::Debug, path::Path};
 use trait_variant::make;
 
 // --- Client trait ---
@@ -55,51 +57,35 @@ impl WifiCommissioningServiceClient {
     const FORGET_ENDPOINT: &str = "/api/v1/networks/forget";
     const SERVICE_INFO_ENDPOINT: &str = "/api/v1/service-info";
 
-    // Tracks the released wifi-commissioning-service tag, not the oldest version
-    // that answers the probe. Raise it together with a released tag.
+    // Tracks the released wifi-commissioning-service tag. Raise it together with a released tag.
     const REQUIRED_CLIENT_VERSION: &str = ">=0.2.1";
 
-    fn required_version() -> &'static VersionReq {
-        static REQUIRED_VERSION: OnceLock<VersionReq> = OnceLock::new();
-        REQUIRED_VERSION.get_or_init(|| {
-            VersionReq::parse(Self::REQUIRED_CLIENT_VERSION)
-                .expect("invalid REQUIRED_CLIENT_VERSION constant")
-        })
+    pub async fn check_availability(&self) -> WifiAvailability {
+        Self::availability(self.service_info().await)
     }
 
-    /// A version that does not parse counts as a mismatch: it cannot be shown
-    /// to satisfy the requirement.
-    fn version_info(current: &str) -> VersionInfo {
-        let mismatch = match Version::parse(current) {
-            Ok(parsed) => !Self::required_version().matches(&parsed),
-            Err(e) => {
-                log::warn!("failed to parse WiFi service version '{current}': {e:#}");
-                true
-            }
+    fn availability(probe: Result<WifiServiceInfoResponse>) -> WifiAvailability {
+        let unknown_version = WifiAvailability::Unavailable {
+            socket_present: true,
+            version_info: None,
         };
 
-        VersionInfo {
-            required: Self::REQUIRED_CLIENT_VERSION.to_string(),
-            current: current.to_string(),
-            mismatch,
-        }
-    }
-
-    pub async fn check_availability(&self) -> WifiAvailability {
-        // A service older than the floor has no /api/v1/service-info and answers
-        // 404, which lands here as an error — expected, not a fault.
-        let info = match self.service_info().await {
+        // A service without the service-info endpoint answers 404, which ends up here.
+        let info = match probe {
             Ok(info) => info,
             Err(e) => {
                 log::warn!("WiFi service-info probe failed: {e:#}");
-                return WifiAvailability::Unavailable {
-                    socket_present: true,
-                    version_info: None,
-                };
+                return unknown_version;
             }
         };
 
-        let version_info = Self::version_info(&info.version);
+        let version_info = match version_info(Self::REQUIRED_CLIENT_VERSION, &info.version) {
+            Ok(version_info) => version_info,
+            Err(e) => {
+                log::warn!("WiFi service version check failed: {e:#}");
+                return unknown_version;
+            }
+        };
 
         if version_info.mismatch {
             log::warn!(
@@ -386,42 +372,91 @@ mod tests {
         }
     }
 
-    mod version_requirements {
+    mod availability {
         use super::*;
+        use omnect_ui_core::types::VersionInfo;
 
-        #[test]
-        fn required_version_parses_correctly() {
-            let version_req = WifiCommissioningServiceClient::required_version();
-            assert_eq!(version_req.to_string(), ">=0.2.1");
+        fn service_info(version: &str, interface_name: &str) -> WifiServiceInfoResponse {
+            WifiServiceInfoResponse {
+                status: "ok".to_string(),
+                ble_enabled: true,
+                interface_name: interface_name.to_string(),
+                version: version.to_string(),
+            }
         }
 
-        #[test]
-        fn accepts_the_floor_and_newer() {
-            for current in ["0.2.1", "0.3.0", "1.0.0"] {
-                let info = WifiCommissioningServiceClient::version_info(current);
-                assert!(!info.mismatch, "{current} should satisfy the requirement");
-                assert_eq!(info.current, current);
-                assert_eq!(info.required, ">=0.2.1");
+        fn unavailable(version_info: Option<VersionInfo>) -> WifiAvailability {
+            WifiAvailability::Unavailable {
+                socket_present: true,
+                version_info,
+            }
+        }
+
+        fn version(current: &str, mismatch: bool) -> VersionInfo {
+            VersionInfo {
+                required: ">=0.2.1".to_string(),
+                current: current.to_string(),
+                mismatch,
             }
         }
 
         #[test]
-        fn rejects_versions_below_the_floor() {
-            // 0.2.0 introduced /api/v1/service-info, 0.1.0 has no such endpoint.
-            for current in ["0.2.0", "0.1.0"] {
-                let info = WifiCommissioningServiceClient::version_info(current);
-                assert!(
-                    info.mismatch,
-                    "{current} should not satisfy the requirement"
+        fn probe_error_has_no_version() {
+            let probe = Err(anyhow::anyhow!("404 Not Found"));
+            assert_eq!(
+                WifiCommissioningServiceClient::availability(probe),
+                unavailable(None)
+            );
+        }
+
+        #[test]
+        fn older_version_is_a_mismatch() {
+            let probe = Ok(service_info("0.1.9", "wlan0"));
+            assert_eq!(
+                WifiCommissioningServiceClient::availability(probe),
+                unavailable(Some(version("0.1.9", true)))
+            );
+        }
+
+        #[test]
+        fn version_that_does_not_parse_has_no_version() {
+            let probe = Ok(service_info("x", "wlan0"));
+            assert_eq!(
+                WifiCommissioningServiceClient::availability(probe),
+                unavailable(None)
+            );
+        }
+
+        #[test]
+        fn empty_interface_is_unavailable() {
+            let probe = Ok(service_info("0.2.1", ""));
+            assert_eq!(
+                WifiCommissioningServiceClient::availability(probe),
+                unavailable(Some(version("0.2.1", false)))
+            );
+        }
+
+        #[test]
+        fn mismatch_is_checked_before_the_interface() {
+            let probe = Ok(service_info("0.1.9", ""));
+            assert_eq!(
+                WifiCommissioningServiceClient::availability(probe),
+                unavailable(Some(version("0.1.9", true)))
+            );
+        }
+
+        #[test]
+        fn matching_version_with_interface_is_available() {
+            for current in ["0.2.1", "1.0.0"] {
+                let probe = Ok(service_info(current, "wlan0"));
+                assert_eq!(
+                    WifiCommissioningServiceClient::availability(probe),
+                    WifiAvailability::Available {
+                        version: current.to_string(),
+                        interface_name: "wlan0".to_string(),
+                    }
                 );
             }
-        }
-
-        #[test]
-        fn unparseable_version_counts_as_mismatch() {
-            let info = WifiCommissioningServiceClient::version_info("not-a-version");
-            assert!(info.mismatch);
-            assert_eq!(info.current, "not-a-version");
         }
     }
 
