@@ -203,6 +203,7 @@ omnect-ui/
 │   │   │   ├── keycloak_client.rs
 │   │   │   ├── omnect_device_service_client.rs
 │   │   │   ├── wifi_commissioning_client.rs
+│   │   │   ├── version.rs        # Service version requirement check
 │   │   │   └── services/         # Business logic services
 │   │   │       ├── mod.rs
 │   │   │       ├── certificate.rs

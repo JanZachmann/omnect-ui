@@ -184,7 +184,7 @@ The device overview page displays a real-time snapshot of the device's health an
 - **OS Variant & Version**: omnect Secure OS build name and version string
 - **Boot Time**: Timestamp of the last system boot
 - **Wait-Online Timeout**: Configured network wait timeout (seconds)
-- **Service Versions**: omnect-device-service, Azure SDK, and WiFi commissioning service versions (the WiFi entry also shows the minimum required version when the installed version is too old)
+- **Service Versions**: omnect-device-service, Azure SDK, and WiFi commissioning service versions (when the installed WiFi service is too old, the entry shows the required version next to it)
 
 ---
 

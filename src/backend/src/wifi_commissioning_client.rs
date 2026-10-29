@@ -378,7 +378,6 @@ mod tests {
 
         fn service_info(version: &str, interface_name: &str) -> WifiServiceInfoResponse {
             WifiServiceInfoResponse {
-                status: "ok".to_string(),
                 ble_enabled: true,
                 interface_name: interface_name.to_string(),
                 version: version.to_string(),
@@ -464,22 +463,12 @@ mod tests {
         use super::*;
 
         #[test]
-        fn deserializes_all_fields() {
+        fn deserializes_service_payload() {
             let json =
                 r#"{"status":"ok","ble_enabled":true,"interface_name":"wlan0","version":"0.2.1"}"#;
             let resp: WifiServiceInfoResponse = serde_json::from_str(json).unwrap();
-            assert_eq!(resp.status, "ok");
-            assert!(resp.ble_enabled);
             assert_eq!(resp.interface_name, "wlan0");
             assert_eq!(resp.version, "0.2.1");
-        }
-
-        #[test]
-        fn deserializes_with_ble_disabled() {
-            let json =
-                r#"{"status":"ok","ble_enabled":false,"interface_name":"wlan0","version":"0.2.1"}"#;
-            let resp: WifiServiceInfoResponse = serde_json::from_str(json).unwrap();
-            assert!(!resp.ble_enabled);
         }
     }
 }

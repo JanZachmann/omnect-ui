@@ -218,6 +218,7 @@ test.describe('Device Factory Reset - Reconnection', () => {
 
     await expect(page.getByText('Factory Reset Completed', { exact: true })).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('etc reformatted twice')).toBeVisible();
+    await expect(page.getByTestId('factory-reset-data-wiped')).not.toBeVisible();
   });
 
   test('failure after data was wiped warns that preserved data may be lost', async ({ page }) => {
@@ -238,6 +239,7 @@ test.describe('Device Factory Reset - Reconnection', () => {
     await expect(page.getByText('Factory Reset Failed', { exact: true })).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('format failed')).toBeVisible();
     await expect(page.getByTestId('factory-reset-data-wiped')).toBeVisible();
+    await expect(page.getByText('The device reported an unknown result.')).not.toBeVisible();
   });
 
   test('failure before any wipe does not warn about wiped data', async ({ page }) => {

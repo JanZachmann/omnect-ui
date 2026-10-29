@@ -149,7 +149,6 @@ pub struct WifiForgetResponse {
 /// Capabilities of the running wifi-commissioning-service instance
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct WifiServiceInfoResponse {
-    pub status: String,
     /// Live BLE transport state: `true` only once BLE actually started.
     pub ble_enabled: bool,
     pub interface_name: String,
