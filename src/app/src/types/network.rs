@@ -203,7 +203,7 @@ impl From<&DeviceNetwork> for NetworkFormData {
         let addr = adapter.ipv4.addrs.first();
         Self {
             name: adapter.name.clone(),
-            ip_address: addr.map(|a| a.addr.clone()).unwrap_or_default(),
+            ip_address: addr.map_or_default(|a| a.addr.clone()),
             dhcp: addr.is_some_and(|a| a.dhcp),
             subnet_mask: cidr_to_subnet(addr.map_or(24, |a| a.prefix_len)),
             dns: adapter.ipv4.dns.clone(),
