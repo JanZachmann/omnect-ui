@@ -22,7 +22,6 @@ workspace = true
 
 [dependencies]
 base64 = { version = "0.23", default-features = false, features = ["alloc"] }
-console_log = { version = "1.1", default-features = false }
 crux_core = { version = "0.20", default-features = false }
 crux_http = { version = "0.20", default-features = false }
 crux_macros = { version = "0.10", default-features = false }
@@ -36,19 +35,14 @@ serde_json = { version = "1.0", default-features = false }
 serde_repr = { version = "0.1", default-features = false }
 serde_valid = { version = "3.2", default-features = false }
 sha1 = { version = "0.11", default-features = false }
-wasm-bindgen = { version = "0.2", default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+console_log = { version = "1.1", default-features = false }
 getrandom = { version = "0.3", features = ["wasm_js"] }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-getrandom = { version = "0.3" }
+wasm-bindgen = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 # Enable the crux testing helpers (expect_*, ResponseBuilder). These moved
 # behind feature flags in crux 0.19 and must not leak into the WASM build.
 crux_core = { version = "0.20", default-features = false, features = ["testing"] }
 crux_http = { version = "0.20", default-features = false, features = ["http-types"] }
-
-[build-dependencies]
-crux_core = { version = "0.20.0", default-features = false, features = ["typegen"] }
